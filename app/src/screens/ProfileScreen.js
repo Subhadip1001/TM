@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, ScrollView, FlatList, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, FlatList, ActivityIndicator, Platform } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import axios from 'axios';
+import NetInfo from '@react-native-community/netinfo';
+import { SyncService } from '../services/SyncService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -40,8 +43,15 @@ const ProfileScreen = ({ navigation }) => {
     const fetchProfile = async () => {
         try {
             const token = await AsyncStorage.getItem('token');
-            const res = await axios.get(`${AUTH_URL}/me`, { headers: { Authorization: `Bearer ${token}` } });
-            setUser(res.data);
+            const netState = await NetInfo.fetch();
+            if (netState.isConnected) {
+                const res = await axios.get(`${AUTH_URL}/me`, { headers: { Authorization: `Bearer ${token}` } });
+                setUser(res.data);
+                await AsyncStorage.setItem('cached_user', JSON.stringify(res.data));
+            } else {
+                const cachedUser = await AsyncStorage.getItem('cached_user');
+                if (cachedUser) setUser(JSON.parse(cachedUser));
+            }
         } catch (error) {
             console.error(error);
         }
@@ -50,11 +60,22 @@ const ProfileScreen = ({ navigation }) => {
     const fetchFilteredExpenses = async () => {
         try {
             const token = await AsyncStorage.getItem('token');
-            const res = await axios.get(`${EXPENSES_URL}/filter/${selectedYear}/${selectedMonth}`, { 
-                headers: { Authorization: `Bearer ${token}` } 
-            });
-            setFilteredExpenses(res.data.expenses);
-            setFilteredTotal(res.data.total);
+            const netState = await NetInfo.fetch();
+            if (netState.isConnected) {
+                const res = await axios.get(`${EXPENSES_URL}/filter/${selectedYear}/${selectedMonth}`, { 
+                    headers: { Authorization: `Bearer ${token}` } 
+                });
+                setFilteredExpenses(res.data.expenses);
+                setFilteredTotal(res.data.total);
+                await AsyncStorage.setItem(`cached_expenses_${selectedYear}_${selectedMonth}`, JSON.stringify(res.data));
+            } else {
+                const cached = await AsyncStorage.getItem(`cached_expenses_${selectedYear}_${selectedMonth}`);
+                if (cached) {
+                    const data = JSON.parse(cached);
+                    setFilteredExpenses(data.expenses);
+                    setFilteredTotal(data.total);
+                }
+            }
         } catch (error) {
             console.error(error);
         }
@@ -171,12 +192,19 @@ const ProfileScreen = ({ navigation }) => {
     );
 
     return (
-        <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 50 }}>
-            {/* Profile Info */}
+        <KeyboardAwareScrollView 
+            style={{ flex: 1, backgroundColor: '#F4F7FC' }} 
+            contentContainerStyle={{ paddingBottom: 50 }} 
+            keyboardShouldPersistTaps="handled"
+            enableOnAndroid={true}
+            extraScrollHeight={20}
+        >
+            <View style={styles.container}>
+                {/* Profile Info */}
             <View style={styles.card}>
                 <View style={styles.profileHeader}>
                     <View style={styles.profileHeaderLeft}>
-                        <Ionicons name="person-circle" size={64} color="#4F46E5" />
+                        <Ionicons name="person-circle" size={64} color="#029EEC" />
                         <View style={styles.profileInfo}>
                             <Text style={styles.username} numberOfLines={1} ellipsizeMode="tail">{user?.username || 'Loading...'}</Text>
                             <Text style={styles.email} numberOfLines={1} ellipsizeMode="tail">{user?.email || 'Please wait...'}</Text>
@@ -236,24 +264,28 @@ const ProfileScreen = ({ navigation }) => {
                         <View key={index} style={[styles.expenseItem, { flexDirection: 'column', alignItems: 'stretch' }]}>
                             {editingBankId === bank._id ? (
                                 <View>
-                                    <TextInput 
-                                        style={[styles.passwordInput, { marginBottom: 10, height: 40 }]} 
-                                        value={editBankName}
-                                        onChangeText={setEditBankName}
-                                        placeholder="Bank Name"
-                                    />
-                                    <TextInput 
-                                        style={[styles.passwordInput, { marginBottom: 10, height: 40 }]} 
-                                        value={editBankAmount}
-                                        onChangeText={setEditBankAmount}
-                                        placeholder="Amount"
-                                        keyboardType="numeric"
-                                    />
+                                    <View style={[styles.passwordContainer, { marginBottom: 10, height: 45 }]}>
+                                        <TextInput 
+                                            style={styles.passwordInput} 
+                                            value={editBankName}
+                                            onChangeText={setEditBankName}
+                                            placeholder="Bank Name"
+                                        />
+                                    </View>
+                                    <View style={[styles.passwordContainer, { marginBottom: 15, height: 45 }]}>
+                                        <TextInput 
+                                            style={styles.passwordInput} 
+                                            value={editBankAmount}
+                                            onChangeText={setEditBankAmount}
+                                            placeholder="Amount"
+                                            keyboardType="numeric"
+                                        />
+                                    </View>
                                     <View style={{ flexDirection: 'row', gap: 10, justifyContent: 'flex-end' }}>
                                         <TouchableOpacity onPress={() => setEditingBankId(null)} style={{ padding: 8, backgroundColor: '#E2E8F0', borderRadius: 8 }}>
                                             <Text style={{ fontWeight: '600', color: '#334155' }}>Cancel</Text>
                                         </TouchableOpacity>
-                                        <TouchableOpacity onPress={() => handleEditBank(bank._id)} style={{ padding: 8, backgroundColor: '#4F46E5', borderRadius: 8 }}>
+                                        <TouchableOpacity onPress={() => handleEditBank(bank._id)} style={{ padding: 8, backgroundColor: '#029EEC', borderRadius: 8 }}>
                                             <Text style={{ fontWeight: '600', color: '#FFF' }}>Save</Text>
                                         </TouchableOpacity>
                                     </View>
@@ -270,7 +302,7 @@ const ProfileScreen = ({ navigation }) => {
                                             setEditBankName(bank.name);
                                             setEditBankAmount(bank.amount.toString());
                                         }}>
-                                            <Ionicons name="pencil" size={20} color="#4F46E5" />
+                                            <Ionicons name="pencil" size={20} color="#029EEC" />
                                         </TouchableOpacity>
                                         <TouchableOpacity onPress={() => handleDeleteBank(bank._id)}>
                                             <Ionicons name="trash" size={20} color="#EF4444" />
@@ -334,7 +366,7 @@ const ProfileScreen = ({ navigation }) => {
                             setSelectedYear(y);
                         }}
                     >
-                        <Ionicons name="chevron-back" size={24} color="#4F46E5" />
+                        <Ionicons name="chevron-back" size={24} color="#029EEC" />
                     </TouchableOpacity>
                     <Text style={styles.pickerText}>{MONTHS[selectedMonth-1].label} {selectedYear}</Text>
                     <TouchableOpacity 
@@ -347,7 +379,7 @@ const ProfileScreen = ({ navigation }) => {
                             setSelectedYear(y);
                         }}
                     >
-                        <Ionicons name="chevron-forward" size={24} color="#4F46E5" />
+                        <Ionicons name="chevron-forward" size={24} color="#029EEC" />
                     </TouchableOpacity>
                 </View>
 
@@ -370,12 +402,13 @@ const ProfileScreen = ({ navigation }) => {
                     <Text style={styles.emptyText}>No expenses this month</Text>
                 )}
             </View>
-        </ScrollView>
+            </View>
+        </KeyboardAwareScrollView>
     );
 };
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#F4F7FC', padding: 20 },
+    container: { flex: 1, padding: 20 },
     card: { 
         backgroundColor: '#FFFFFF', padding: 20, borderRadius: 16, marginBottom: 20,
         shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 2,
@@ -395,14 +428,14 @@ const styles = StyleSheet.create({
     },
     passwordInput: { flex: 1, height: 50, paddingHorizontal: 15, fontSize: 15 },
     eyeIcon: { padding: 15 },
-    updateBtn: { backgroundColor: '#4F46E5', padding: 15, borderRadius: 12, alignItems: 'center' },
-    updateBtnDisabled: { backgroundColor: '#818CF8' },
+    updateBtn: { backgroundColor: '#029EEC', padding: 15, borderRadius: 12, alignItems: 'center' },
+    updateBtnDisabled: { backgroundColor: '#6CBCE9' },
     updateBtnText: { color: '#FFF', fontWeight: '700', fontSize: 16 },
 
     pickerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, backgroundColor: '#F8FAFC', borderRadius: 12, padding: 5 },
     pickerBtn: { padding: 10 },
     pickerText: { fontSize: 16, fontWeight: '700', color: '#334155' },
-    reportTotalBox: { alignItems: 'center', backgroundColor: '#4F46E5', padding: 20, borderRadius: 12, marginBottom: 20 },
+    reportTotalBox: { alignItems: 'center', backgroundColor: '#029EEC', padding: 20, borderRadius: 12, marginBottom: 20 },
     reportTotalLabel: { color: '#E0E7FF', fontSize: 14, fontWeight: '500', marginBottom: 5 },
     reportTotalAmount: { color: '#FFFFFF', fontSize: 32, fontWeight: '800' },
     

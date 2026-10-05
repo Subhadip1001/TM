@@ -1,6 +1,10 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, Platform, ScrollView } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import axios from 'axios';
+import NetInfo from '@react-native-community/netinfo';
+import uuid from 'react-native-uuid';
+import { SyncService } from '../services/SyncService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useFocusEffect } from '@react-navigation/native';
@@ -60,23 +64,31 @@ const AddExpenseScreen = ({ navigation, route }) => {
                 return;
             }
 
-            const config = {
-                headers: {
-                    Authorization: `Bearer ${token}`
-                }
-            };
-
             const expenseData = {
                 title,
                 amount: parseFloat(amount),
                 date: date.toISOString(),
                 bankId: selectedBankId
             };
-            
-            if (expenseToEdit) {
-                await axios.put(`${API_URL}/${expenseToEdit._id}`, expenseData, config);
+
+            const netState = await NetInfo.fetch();
+
+            if (netState.isConnected) {
+                const config = { headers: { Authorization: `Bearer ${token}` } };
+                if (expenseToEdit) {
+                    await axios.put(`${API_URL}/${expenseToEdit._id}`, expenseData, config);
+                } else {
+                    await axios.post(API_URL, expenseData, config);
+                }
             } else {
-                await axios.post(API_URL, expenseData, config);
+                // Offline Logic
+                if (expenseToEdit) {
+                    await SyncService.addToQueue({ type: 'EDIT_EXPENSE', expenseId: expenseToEdit._id, data: expenseData });
+                } else {
+                    expenseData._id = uuid.v4(); // Temporary local ID
+                    await SyncService.addToQueue({ type: 'ADD_EXPENSE', localId: expenseData._id, data: expenseData });
+                }
+                Alert.alert('Offline Mode', 'Expense saved locally. It will sync when you are back online.');
             }
             
             navigation.goBack();
@@ -87,8 +99,15 @@ const AddExpenseScreen = ({ navigation, route }) => {
     };
 
     return (
-        <View style={styles.container}>
-            <Text style={styles.label}>Expense Title</Text>
+        <KeyboardAwareScrollView 
+            style={{ flex: 1, backgroundColor: '#F4F7FC' }} 
+            contentContainerStyle={styles.container} 
+            keyboardShouldPersistTaps="handled"
+            enableOnAndroid={true}
+            extraScrollHeight={20}
+        >
+            <View>
+                <Text style={styles.label}>Expense Title</Text>
             <TextInput 
                 style={styles.input} 
                 placeholder="e.g. Starbucks, Rent" 
@@ -159,7 +178,7 @@ const AddExpenseScreen = ({ navigation, route }) => {
                                                     setShowDropdown(false);
                                                 }}
                                             >
-                                                <Text style={[styles.dropdownItemText, selectedBankId === bank._id && { fontWeight: '700', color: '#4F46E5' }]}>{bank.name}</Text>
+                                                <Text style={[styles.dropdownItemText, selectedBankId === bank._id && { fontWeight: '700', color: '#029EEC' }]}>{bank.name}</Text>
                                             </TouchableOpacity>
                                         ))}
                                     </ScrollView>
@@ -173,12 +192,13 @@ const AddExpenseScreen = ({ navigation, route }) => {
             <TouchableOpacity style={styles.button} onPress={handleSave}>
                 <Text style={styles.buttonText}>{expenseToEdit ? 'Update Expense' : 'Save Expense'}</Text>
             </TouchableOpacity>
-        </View>
+            </View>
+        </KeyboardAwareScrollView>
     );
 };
 
 const styles = StyleSheet.create({
-    container: { flex: 1, padding: 25, backgroundColor: '#F4F7FC' },
+    container: { flexGrow: 1, padding: 25 },
     label: { fontSize: 16, fontWeight: '700', color: '#1E293B', marginBottom: 10, marginTop: 15, letterSpacing: 0.5 },
     input: { 
         height: 55, backgroundColor: '#FFFFFF', borderRadius: 12, paddingHorizontal: 20, 
@@ -203,8 +223,8 @@ const styles = StyleSheet.create({
     },
     dropdownItemText: { fontSize: 16, color: '#334155' },
     button: { 
-        backgroundColor: '#4F46E5', height: 55, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginTop: 35,
-        shadowColor: '#4F46E5', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 5, elevation: 5
+        backgroundColor: '#029EEC', height: 55, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginTop: 35,
+        shadowColor: '#029EEC', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 5, elevation: 5
     },
     buttonText: { color: '#FFFFFF', fontSize: 18, fontWeight: '700', letterSpacing: 0.5 }
 });

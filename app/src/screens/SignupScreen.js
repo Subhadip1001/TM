@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, Platform } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import { Ionicons } from '@expo/vector-icons';
@@ -43,8 +44,15 @@ const SignupScreen = ({ navigation }) => {
     };
 
     return (
-        <View style={styles.container}>
-            <Text style={styles.title}>Create Account</Text>
+        <KeyboardAwareScrollView 
+            style={{ flex: 1, backgroundColor: '#F4F7FC' }} 
+            contentContainerStyle={styles.container} 
+            keyboardShouldPersistTaps="handled"
+            enableOnAndroid={true}
+            extraScrollHeight={20}
+        >
+            <View>
+                <Text style={styles.title}>Create Account</Text>
 
             {errorMessage ? (
                 <View style={styles.errorContainer}>
@@ -99,12 +107,13 @@ const SignupScreen = ({ navigation }) => {
             <TouchableOpacity onPress={() => navigation.navigate('Login')}>
                 <Text style={styles.linkText}>Already have an account? Login</Text>
             </TouchableOpacity>
-        </View>
+            </View>
+        </KeyboardAwareScrollView>
     );
 };
 
 const styles = StyleSheet.create({
-    container: { flex: 1, justifyContent: 'center', padding: 25, backgroundColor: '#F4F7FC' },
+    container: { flexGrow: 1, justifyContent: 'center', padding: 25 },
     title: { fontSize: 36, fontWeight: '800', marginBottom: 40, textAlign: 'center', color: '#1E293B', letterSpacing: 0.5 },
     input: { 
         height: 55, backgroundColor: '#FFFFFF', borderRadius: 12, paddingHorizontal: 20, marginBottom: 20, 
@@ -124,12 +133,12 @@ const styles = StyleSheet.create({
     passwordInput: { flex: 1, height: 55, paddingHorizontal: 20, fontSize: 16, color: '#334155' },
     eyeIcon: { padding: 15 },
     button: { 
-        backgroundColor: '#4F46E5', height: 55, borderRadius: 12, justifyContent: 'center', alignItems: 'center', 
-        marginTop: 10, shadowColor: '#4F46E5', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 5, elevation: 5
+        backgroundColor: '#029EEC', height: 55, borderRadius: 12, justifyContent: 'center', alignItems: 'center', 
+        marginTop: 10, shadowColor: '#029EEC', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 5, elevation: 5
     },
-    buttonDisabled: { backgroundColor: '#818CF8' },
+    buttonDisabled: { backgroundColor: '#6CBCE9' },
     buttonText: { color: '#FFFFFF', fontSize: 18, fontWeight: '700', letterSpacing: 0.5 },
-    linkText: { color: '#4F46E5', marginTop: 25, textAlign: 'center', fontSize: 16, fontWeight: '600' }
+    linkText: { color: '#029EEC', marginTop: 25, textAlign: 'center', fontSize: 16, fontWeight: '600' }
 });
 
 export default SignupScreen;

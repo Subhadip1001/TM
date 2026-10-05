@@ -1,19 +1,19 @@
 {
   "expo": {
-    "name": "app",
-    "slug": "app",
+    "name": "TM",
+    "slug": "TM",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/expo.icon/Assets/app_icon.png",
+    "icon": "./assets/icon.jpg",
     "scheme": "app",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon/Assets/app_icon.png"
+      "icon": "./assets/icon.jpg"
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/expo.icon/Assets/app_icon.png"
+        "backgroundColor": "#029EEC",
+        "foregroundImage": "./assets/icon.jpg"
       },
       "predictiveBackGestureEnabled": false,
       "package": "com.subha002.app"
@@ -26,7 +26,9 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF"
+          "backgroundColor": "#029EEC",
+          "image": "./assets/splash.jpg",
+          "imageWidth": 200
         }
       ],
       "@react-native-community/datetimepicker"

@@ -84,6 +84,30 @@ router.put('/:id', verifyToken, async (req, res) => {
         if (expense.userId.toString() !== req.user.id) {
             return res.status(403).json("You can only update your own expenses");
         }
+
+        const user = await User.findById(req.user.id);
+        if (user) {
+            // Revert old amount from old bank
+            if (expense.bankId) {
+                const oldBank = user.banks.id(expense.bankId);
+                if (oldBank) {
+                    oldBank.amount += expense.amount;
+                }
+            }
+            
+            // Apply new amount to new bank
+            const newBankId = req.body.bankId !== undefined ? req.body.bankId : expense.bankId;
+            const newAmount = req.body.amount !== undefined ? req.body.amount : expense.amount;
+            
+            if (newBankId) {
+                const newBank = user.banks.id(newBankId);
+                if (newBank) {
+                    newBank.amount -= newAmount;
+                }
+            }
+            await user.save();
+        }
+
         const updatedExpense = await Expense.findByIdAndUpdate(
             req.params.id,
             { $set: req.body },
@@ -102,6 +126,18 @@ router.delete('/:id', verifyToken, async (req, res) => {
         if (expense.userId.toString() !== req.user.id) {
             return res.status(403).json("You can only delete your own expenses");
         }
+
+        if (expense.bankId) {
+            const user = await User.findById(req.user.id);
+            if (user) {
+                const bank = user.banks.id(expense.bankId);
+                if (bank) {
+                    bank.amount += expense.amount;
+                    await user.save();
+                }
+            }
+        }
+
         await expense.deleteOne();
         res.status(200).json("Expense has been deleted...");
     } catch (err) {

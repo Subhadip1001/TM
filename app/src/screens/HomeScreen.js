@@ -1,6 +1,8 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert } from 'react-native';
 import axios from 'axios';
+import NetInfo from '@react-native-community/netinfo';
+import { SyncService } from '../services/SyncService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,17 +24,23 @@ const HomeScreen = ({ navigation }) => {
             const token = await AsyncStorage.getItem('token');
             if (!token) return;
 
-            const config = {
-                headers: {
-                    Authorization: `Bearer ${token}`
-                }
-            };
+            const netState = await NetInfo.fetch();
+            if (netState.isConnected) {
+                const config = { headers: { Authorization: `Bearer ${token}` } };
+                const expensesRes = await axios.get(API_URL, config);
+                setExpenses(expensesRes.data);
+                
+                const monthlyRes = await axios.get(`${API_URL}/monthly`, config);
+                setMonthlyTotal(monthlyRes.data.total || 0);
 
-            const expensesRes = await axios.get(API_URL, config);
-            setExpenses(expensesRes.data);
-
-            const monthlyRes = await axios.get(`${API_URL}/monthly`, config);
-            setMonthlyTotal(monthlyRes.data.total || 0);
+                await AsyncStorage.setItem('cached_home_expenses', JSON.stringify(expensesRes.data));
+                await AsyncStorage.setItem('cached_home_total', JSON.stringify(monthlyRes.data.total || 0));
+            } else {
+                const cachedExps = await AsyncStorage.getItem('cached_home_expenses');
+                if (cachedExps) setExpenses(JSON.parse(cachedExps));
+                const cachedTotal = await AsyncStorage.getItem('cached_home_total');
+                if (cachedTotal) setMonthlyTotal(JSON.parse(cachedTotal));
+            }
 
         } catch (error) {
             console.error('Error fetching data:', error.response?.data || error.message);
@@ -54,10 +62,17 @@ const HomeScreen = ({ navigation }) => {
                 onPress: async () => {
                     try {
                         const token = await AsyncStorage.getItem('token');
-                        await axios.delete(`${API_URL}/${id}`, {
-                            headers: { Authorization: `Bearer ${token}` }
-                        });
-                        fetchData();
+                        const netState = await NetInfo.fetch();
+                        if (netState.isConnected) {
+                            await axios.delete(`${API_URL}/${id}`, {
+                                headers: { Authorization: `Bearer ${token}` }
+                            });
+                            fetchData();
+                        } else {
+                            await SyncService.addToQueue({ type: 'DELETE_EXPENSE', expenseId: id });
+                            setExpenses(prev => prev.filter(e => e._id !== id));
+                            Alert.alert('Offline Mode', 'Expense deleted locally. It will sync when online.');
+                        }
                     } catch (error) {
                         console.error('Delete error:', error);
                         Alert.alert('Error', 'Failed to delete expense');
@@ -87,7 +102,7 @@ const HomeScreen = ({ navigation }) => {
                 {isExpanded && (
                     <View style={styles.actionRow}>
                         <TouchableOpacity 
-                            style={[styles.actionBtn, { backgroundColor: '#4F46E5' }]}
+                            style={[styles.actionBtn, { backgroundColor: '#029EEC' }]}
                             onPress={() => navigation.navigate('AddExpense', { expense: item })}
                         >
                             <Ionicons name="pencil" size={18} color="#FFF" />
@@ -142,7 +157,7 @@ const HomeScreen = ({ navigation }) => {
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F4F7FC' },
-    header: { backgroundColor: '#4F46E5', padding: 35, paddingTop: 80, alignItems: 'center', borderBottomLeftRadius: 30, borderBottomRightRadius: 30, shadowColor: '#4F46E5', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 5, elevation: 5 },
+    header: { backgroundColor: '#029EEC', padding: 35, paddingTop: 80, alignItems: 'center', borderBottomLeftRadius: 30, borderBottomRightRadius: 30, shadowColor: '#029EEC', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 5, elevation: 5 },
     profileBtn: { position: 'absolute', top: 50, right: 25 },
     headerSubtitle: { color: '#E0E7FF', fontSize: 16, marginBottom: 8, fontWeight: '500', letterSpacing: 0.5 },
     headerTitle: { color: '#FFFFFF', fontSize: 44, fontWeight: '800' },
@@ -163,8 +178,8 @@ const styles = StyleSheet.create({
     expenseAmount: { fontSize: 18, fontWeight: '800', color: '#EF4444' },
     fab: { 
         position: 'absolute', bottom: 35, right: 35, width: 65, height: 65, borderRadius: 32.5, 
-        backgroundColor: '#4F46E5', justifyContent: 'center', alignItems: 'center', 
-        shadowColor: '#4F46E5', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 5, elevation: 6 
+        backgroundColor: '#029EEC', justifyContent: 'center', alignItems: 'center', 
+        shadowColor: '#029EEC', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 5, elevation: 6 
     },
     fabIcon: { fontSize: 32, color: '#FFFFFF', fontWeight: 'bold' }
 });
