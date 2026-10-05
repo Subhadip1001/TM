@@ -14,7 +14,18 @@ const UserSchema = new mongoose.Schema({
     password: {
         type: String,
         required: true
-    }
+    },
+    banks: [{
+        name: {
+            type: String,
+            required: true
+        },
+        amount: {
+            type: Number,
+            required: true,
+            default: 0
+        }
+    }]
 }, { timestamps: true });
 
 export default mongoose.model('User', UserSchema);

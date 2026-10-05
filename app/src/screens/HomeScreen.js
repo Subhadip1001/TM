@@ -4,6 +4,7 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { API_BASE_URL } from '../config';
 
@@ -14,6 +15,7 @@ const HomeScreen = ({ navigation }) => {
     const [monthlyTotal, setMonthlyTotal] = useState(0);
     const [expenses, setExpenses] = useState([]);
     const [expandedId, setExpandedId] = useState(null);
+    const insets = useSafeAreaInsets();
 
     const fetchData = async () => {
         try {
@@ -129,7 +131,7 @@ const HomeScreen = ({ navigation }) => {
             </View>
 
             <TouchableOpacity 
-                style={styles.fab} 
+                style={[styles.fab, { bottom: Math.max(insets.bottom + 25, 35) }]} 
                 onPress={() => navigation.navigate('AddExpense')}
             >
                 <Ionicons name="add" size={32} color="#FFFFFF" />
@@ -140,8 +142,8 @@ const HomeScreen = ({ navigation }) => {
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F4F7FC' },
-    header: { backgroundColor: '#4F46E5', padding: 35, paddingTop: 60, alignItems: 'center', borderBottomLeftRadius: 30, borderBottomRightRadius: 30, shadowColor: '#4F46E5', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 5, elevation: 5 },
-    profileBtn: { position: 'absolute', top: 20, right: 20 },
+    header: { backgroundColor: '#4F46E5', padding: 35, paddingTop: 80, alignItems: 'center', borderBottomLeftRadius: 30, borderBottomRightRadius: 30, shadowColor: '#4F46E5', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 5, elevation: 5 },
+    profileBtn: { position: 'absolute', top: 50, right: 25 },
     headerSubtitle: { color: '#E0E7FF', fontSize: 16, marginBottom: 8, fontWeight: '500', letterSpacing: 0.5 },
     headerTitle: { color: '#FFFFFF', fontSize: 44, fontWeight: '800' },
     listContainer: { flex: 1, padding: 25 },

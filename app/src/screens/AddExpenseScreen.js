@@ -1,37 +1,51 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import React, { useState, useCallback } from 'react';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView } from 'react-native';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useShareIntent } from 'expo-share-intent';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 
 import { API_BASE_URL } from '../config';
 
 const API_URL = `${API_BASE_URL}/expenses`;
+const AUTH_URL = `${API_BASE_URL}/auth`;
 
 
 const AddExpenseScreen = ({ navigation, route }) => {
-    const { hasShareIntent, shareIntent, resetShareIntent } = useShareIntent();
     const expenseToEdit = route.params?.expense;
-    const [title, setTitle] = useState(expenseToEdit ? expenseToEdit.title : '');
+    const prefilledTitle = route.params?.prefilledTitle;
+    
+    const [title, setTitle] = useState(expenseToEdit ? expenseToEdit.title : (prefilledTitle || ''));
     const [amount, setAmount] = useState(expenseToEdit ? expenseToEdit.amount.toString() : '');
     const [date, setDate] = useState(expenseToEdit ? new Date(expenseToEdit.date) : new Date());
     const [showDatePicker, setShowDatePicker] = useState(false);
+    
+    const [banks, setBanks] = useState([]);
+    const [selectedBankId, setSelectedBankId] = useState(expenseToEdit ? expenseToEdit.bankId : null);
+    const [showDropdown, setShowDropdown] = useState(false);
 
-    useEffect(() => {
-        // Automatically populate if opened via share extension (e.g., sharing "Paid ₹50 for Starbucks")
-        if (hasShareIntent && shareIntent.value) {
-            const sharedText = shareIntent.value;
-            // A simple logic to parse name and amount from text
-            const amountMatch = sharedText.match(/\$?\d+(\.\d{2})?/);
-            if (amountMatch) {
-                setAmount(amountMatch[0].replace('₹', ''));
-            }
-            setTitle(sharedText);
-            resetShareIntent();
-        }
-    }, [hasShareIntent, shareIntent]);
+    useFocusEffect(
+        useCallback(() => {
+            const fetchProfile = async () => {
+                try {
+                    const token = await AsyncStorage.getItem('token');
+                    if (token) {
+                        const res = await axios.get(`${AUTH_URL}/me`, { headers: { Authorization: `Bearer ${token}` } });
+                        if (res.data && res.data.banks) {
+                            setBanks(res.data.banks);
+                            if (res.data.banks.length === 1 && !expenseToEdit) {
+                                setSelectedBankId(res.data.banks[0]._id);
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.error(error);
+                }
+            };
+            fetchProfile();
+        }, [expenseToEdit])
+    );
 
     const handleSave = async () => {
         if (!title || !amount) {
@@ -55,7 +69,8 @@ const AddExpenseScreen = ({ navigation, route }) => {
             const expenseData = {
                 title,
                 amount: parseFloat(amount),
-                date: date.toISOString()
+                date: date.toISOString(),
+                bankId: selectedBankId
             };
             
             if (expenseToEdit) {
@@ -77,6 +92,7 @@ const AddExpenseScreen = ({ navigation, route }) => {
             <TextInput 
                 style={styles.input} 
                 placeholder="e.g. Starbucks, Rent" 
+                placeholderTextColor="#94A3B8"
                 value={title}
                 onChangeText={setTitle}
             />
@@ -85,6 +101,7 @@ const AddExpenseScreen = ({ navigation, route }) => {
             <TextInput 
                 style={styles.input} 
                 placeholder="0.00" 
+                placeholderTextColor="#94A3B8"
                 value={amount}
                 onChangeText={setAmount}
                 keyboardType="numeric"
@@ -113,6 +130,46 @@ const AddExpenseScreen = ({ navigation, route }) => {
                 />
             )}
 
+            {banks.length > 0 && (
+                <View style={{ zIndex: 10 }}>
+                    <Text style={styles.label}>Paid From Bank</Text>
+                    {banks.length === 1 ? (
+                        <View style={styles.input}>
+                            <Text style={{ lineHeight: 55, color: '#334155', fontSize: 16 }}>{banks[0].name}</Text>
+                        </View>
+                    ) : (
+                        <View style={{ position: 'relative' }}>
+                            <TouchableOpacity 
+                                style={[styles.input, { justifyContent: 'center' }]} 
+                                onPress={() => setShowDropdown(!showDropdown)}
+                            >
+                                <Text style={{ color: '#334155', fontSize: 16 }}>
+                                    {selectedBankId ? banks.find(b => b._id === selectedBankId)?.name : 'Select a bank...'}
+                                </Text>
+                            </TouchableOpacity>
+                            {showDropdown && (
+                                <View style={styles.dropdownMenu}>
+                                    <ScrollView nestedScrollEnabled={true}>
+                                        {banks.map(bank => (
+                                            <TouchableOpacity 
+                                                key={bank._id} 
+                                                style={styles.dropdownItem}
+                                                onPress={() => {
+                                                    setSelectedBankId(bank._id);
+                                                    setShowDropdown(false);
+                                                }}
+                                            >
+                                                <Text style={[styles.dropdownItemText, selectedBankId === bank._id && { fontWeight: '700', color: '#4F46E5' }]}>{bank.name}</Text>
+                                            </TouchableOpacity>
+                                        ))}
+                                    </ScrollView>
+                                </View>
+                            )}
+                        </View>
+                    )}
+                </View>
+            )}
+
             <TouchableOpacity style={styles.button} onPress={handleSave}>
                 <Text style={styles.buttonText}>{expenseToEdit ? 'Update Expense' : 'Save Expense'}</Text>
             </TouchableOpacity>
@@ -135,6 +192,16 @@ const styles = StyleSheet.create({
         shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 2
     },
     datePickerText: { fontSize: 16, color: '#334155' },
+    dropdownMenu: {
+        position: 'absolute', top: 60, left: 0, right: 0, backgroundColor: '#FFF', 
+        borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0', zIndex: 100,
+        shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 5, elevation: 5,
+        maxHeight: 150
+    },
+    dropdownItem: {
+        padding: 15, borderBottomWidth: 1, borderBottomColor: '#F1F5F9'
+    },
+    dropdownItemText: { fontSize: 16, color: '#334155' },
     button: { 
         backgroundColor: '#4F46E5', height: 55, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginTop: 35,
         shadowColor: '#4F46E5', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 5, elevation: 5

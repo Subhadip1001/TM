@@ -14,6 +14,9 @@ const ExpenseSchema = new mongoose.Schema({
         type: Number,
         required: true
     },
+    bankId: {
+        type: mongoose.Schema.Types.ObjectId
+    },
     date: {
         type: Date,
         default: Date.now

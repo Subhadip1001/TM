@@ -70,4 +70,55 @@ router.put('/password', verifyToken, async (req, res) => {
     }
 });
 
+// Add a bank
+router.post('/bank', verifyToken, async (req, res) => {
+    try {
+        const { name, amount } = req.body;
+        const user = await User.findById(req.user.id);
+        if (!user) return res.status(404).json({ error: 'User not found' });
+
+        user.banks.push({ name, amount: parseFloat(amount) });
+        await user.save();
+
+        res.status(201).json(user.banks);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Edit a bank
+router.put('/bank/:id', verifyToken, async (req, res) => {
+    try {
+        const { name, amount } = req.body;
+        const user = await User.findById(req.user.id);
+        if (!user) return res.status(404).json({ error: 'User not found' });
+
+        const bank = user.banks.id(req.params.id);
+        if (!bank) return res.status(404).json({ error: 'Bank not found' });
+
+        if (name) bank.name = name;
+        if (amount !== undefined) bank.amount = parseFloat(amount);
+        await user.save();
+
+        res.status(200).json(user.banks);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Delete a bank
+router.delete('/bank/:id', verifyToken, async (req, res) => {
+    try {
+        const user = await User.findById(req.user.id);
+        if (!user) return res.status(404).json({ error: 'User not found' });
+
+        user.banks.pull({ _id: req.params.id });
+        await user.save();
+
+        res.status(200).json(user.banks);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 export default router;

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,32 +14,56 @@ const SignupScreen = ({ navigation }) => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
+    const [isLoading, setIsLoading] = useState(false);
+    const [errorMessage, setErrorMessage] = useState('');
 
     const handleSignup = async () => {
+        if (isLoading) return;
+        setErrorMessage('');
+        setIsLoading(true);
         try {
             const res = await axios.post(`${API_URL}/register`, { username, email, password });
             if (res.status === 201) {
-                Alert.alert('Success', 'Account created successfully! Please login.');
-                navigation.navigate('Login');
+                // Automatically log the user in after registration
+                const loginRes = await axios.post(`${API_URL}/login`, { email, password });
+                if (loginRes.data.token) {
+                    await AsyncStorage.setItem('token', loginRes.data.token);
+                    navigation.reset({
+                        index: 0,
+                        routes: [{ name: 'Home' }],
+                    });
+                }
             }
         } catch (error) {
             console.error('Signup Error:', error.response?.data || error.message);
-            Alert.alert('Error', 'Signup failed: ' + (error.response?.data?.error || error.message));
+            setErrorMessage(error.response?.data?.error || 'Signup failed. Please try again.');
+        } finally {
+            setIsLoading(false);
         }
     };
 
     return (
         <View style={styles.container}>
             <Text style={styles.title}>Create Account</Text>
+
+            {errorMessage ? (
+                <View style={styles.errorContainer}>
+                    <Ionicons name="alert-circle" size={20} color="#EF4444" />
+                    <Text style={styles.errorText}>{errorMessage}</Text>
+                </View>
+            ) : null}
+
             <TextInput 
                 style={styles.input} 
                 placeholder="Username" 
+                placeholderTextColor="#94A3B8"
                 value={username}
                 onChangeText={setUsername}
             />
             <TextInput 
                 style={styles.input} 
                 placeholder="Email" 
+                placeholderTextColor="#94A3B8"
                 value={email}
                 onChangeText={setEmail}
                 keyboardType="email-address"
@@ -49,6 +73,7 @@ const SignupScreen = ({ navigation }) => {
                 <TextInput 
                     style={styles.passwordInput} 
                     placeholder="Password" 
+                    placeholderTextColor="#94A3B8"
                     value={password}
                     onChangeText={setPassword}
                     secureTextEntry={!showPassword}
@@ -60,8 +85,16 @@ const SignupScreen = ({ navigation }) => {
                     <Ionicons name={showPassword ? "eye-off" : "eye"} size={24} color="gray" />
                 </TouchableOpacity>
             </View>
-            <TouchableOpacity style={styles.button} onPress={handleSignup}>
-                <Text style={styles.buttonText}>Sign Up</Text>
+            <TouchableOpacity 
+                style={[styles.button, isLoading && styles.buttonDisabled]} 
+                onPress={handleSignup}
+                disabled={isLoading}
+            >
+                {isLoading ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                    <Text style={styles.buttonText}>Sign Up</Text>
+                )}
             </TouchableOpacity>
             <TouchableOpacity onPress={() => navigation.navigate('Login')}>
                 <Text style={styles.linkText}>Already have an account? Login</Text>
@@ -83,12 +116,18 @@ const styles = StyleSheet.create({
         borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 25,
         shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 2
     },
+    errorContainer: { 
+        flexDirection: 'row', alignItems: 'center', backgroundColor: '#FEF2F2', padding: 15, borderRadius: 12, marginBottom: 20,
+        borderWidth: 1, borderColor: '#FECACA'
+    },
+    errorText: { color: '#EF4444', fontSize: 14, fontWeight: '600', marginLeft: 8, flex: 1 },
     passwordInput: { flex: 1, height: 55, paddingHorizontal: 20, fontSize: 16, color: '#334155' },
     eyeIcon: { padding: 15 },
     button: { 
         backgroundColor: '#4F46E5', height: 55, borderRadius: 12, justifyContent: 'center', alignItems: 'center', 
         marginTop: 10, shadowColor: '#4F46E5', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 5, elevation: 5
     },
+    buttonDisabled: { backgroundColor: '#818CF8' },
     buttonText: { color: '#FFFFFF', fontSize: 18, fontWeight: '700', letterSpacing: 0.5 },
     linkText: { color: '#4F46E5', marginTop: 25, textAlign: 'center', fontSize: 16, fontWeight: '600' }
 });

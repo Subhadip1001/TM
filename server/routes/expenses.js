@@ -1,6 +1,7 @@
 import express from 'express';
 import Expense from '../models/Expense.js';
 import verifyToken from '../middleware/verifyToken.js';
+import User from '../models/User.js';
 
 const router = express.Router();
 
@@ -8,6 +9,16 @@ const router = express.Router();
 router.post('/', verifyToken, async (req, res) => {
     const newExpense = new Expense({ ...req.body, userId: req.user.id });
     try {
+        if (req.body.bankId) {
+            const user = await User.findById(req.user.id);
+            if (user) {
+                const bank = user.banks.id(req.body.bankId);
+                if (bank) {
+                    bank.amount -= req.body.amount;
+                    await user.save();
+                }
+            }
+        }
         const savedExpense = await newExpense.save();
         res.status(201).json(savedExpense);
     } catch (err) {
