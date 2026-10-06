@@ -35,11 +35,24 @@ const AddExpenseScreen = ({ navigation, route }) => {
                 try {
                     const token = await AsyncStorage.getItem('token');
                     if (token) {
-                        const res = await axios.get(`${AUTH_URL}/me`, { headers: { Authorization: `Bearer ${token}` } });
-                        if (res.data && res.data.banks) {
-                            setBanks(res.data.banks);
-                            if (res.data.banks.length === 1 && !expenseToEdit) {
-                                setSelectedBankId(res.data.banks[0]._id);
+                        const netState = await NetInfo.fetch();
+                        let userData = null;
+
+                        if (netState.isConnected) {
+                            const res = await axios.get(`${AUTH_URL}/me`, { headers: { Authorization: `Bearer ${token}` } });
+                            userData = res.data;
+                            await AsyncStorage.setItem('cached_user', JSON.stringify(userData));
+                        } else {
+                            const cachedUser = await AsyncStorage.getItem('cached_user');
+                            if (cachedUser) {
+                                userData = JSON.parse(cachedUser);
+                            }
+                        }
+
+                        if (userData && userData.banks) {
+                            setBanks(userData.banks);
+                            if (userData.banks.length === 1 && !expenseToEdit) {
+                                setSelectedBankId(userData.banks[0]._id);
                             }
                         }
                     }
@@ -82,12 +95,32 @@ const AddExpenseScreen = ({ navigation, route }) => {
                 }
             } else {
                 // Offline Logic
+                const cachedExpsStr = await AsyncStorage.getItem('cached_home_expenses');
+                let cachedExps = cachedExpsStr ? JSON.parse(cachedExpsStr) : [];
+                const cachedTotalStr = await AsyncStorage.getItem('cached_home_total');
+                let cachedTotal = cachedTotalStr ? JSON.parse(cachedTotalStr) : 0;
+                
+                const isCurrentMonth = new Date(expenseData.date).getMonth() === new Date().getMonth() && 
+                                       new Date(expenseData.date).getFullYear() === new Date().getFullYear();
+
                 if (expenseToEdit) {
                     await SyncService.addToQueue({ type: 'EDIT_EXPENSE', expenseId: expenseToEdit._id, data: expenseData });
+                    const index = cachedExps.findIndex(e => e._id === expenseToEdit._id);
+                    if (index !== -1) {
+                        if (isCurrentMonth) cachedTotal -= cachedExps[index].amount;
+                        cachedExps[index] = { ...cachedExps[index], ...expenseData };
+                        if (isCurrentMonth) cachedTotal += expenseData.amount;
+                    }
                 } else {
                     expenseData._id = uuid.v4(); // Temporary local ID
                     await SyncService.addToQueue({ type: 'ADD_EXPENSE', localId: expenseData._id, data: expenseData });
+                    cachedExps.unshift(expenseData);
+                    if (isCurrentMonth) cachedTotal += expenseData.amount;
                 }
+
+                await AsyncStorage.setItem('cached_home_expenses', JSON.stringify(cachedExps));
+                await AsyncStorage.setItem('cached_home_total', JSON.stringify(cachedTotal));
+
                 Alert.alert('Offline Mode', 'Expense saved locally. It will sync when you are back online.');
             }
             

@@ -7,6 +7,8 @@ const EXPENSES_URL = `${API_BASE_URL}/expenses`;
 const AUTH_URL = `${API_BASE_URL}/auth`;
 const QUEUE_KEY = '@offline_action_queue';
 
+let isProcessing = false;
+
 export const SyncService = {
     // Add an action to the queue
     addToQueue: async (action) => {
@@ -22,11 +24,20 @@ export const SyncService = {
 
     // Process the queue when online
     processQueue: async () => {
+        if (isProcessing) return;
+        isProcessing = true;
+
         const state = await NetInfo.fetch();
-        if (!state.isConnected) return;
+        if (!state.isConnected) {
+            isProcessing = false;
+            return;
+        }
 
         const token = await AsyncStorage.getItem('token');
-        if (!token) return;
+        if (!token) {
+            isProcessing = false;
+            return;
+        }
 
         try {
             const queueStr = await AsyncStorage.getItem(QUEUE_KEY);
@@ -46,7 +57,8 @@ export const SyncService = {
                 const action = queue[i];
                 try {
                     if (action.type === 'ADD_EXPENSE') {
-                        const data = action.data;
+                        const data = { ...action.data };
+                        delete data._id; // Prevent Cast to ObjectId error
                         const res = await axios.post(EXPENSES_URL, data, config);
                         idMapping[action.localId] = res.data._id;
                     } 
@@ -54,7 +66,9 @@ export const SyncService = {
                         const realId = idMapping[action.expenseId] || action.expenseId;
                         // Avoid trying to put with a UUID if it wasn't mapped
                         if (!realId.includes('-')) {
-                            await axios.put(`${EXPENSES_URL}/${realId}`, action.data, config);
+                            const data = { ...action.data };
+                            delete data._id;
+                            await axios.put(`${EXPENSES_URL}/${realId}`, data, config);
                         }
                     }
                     else if (action.type === 'DELETE_EXPENSE') {
@@ -78,6 +92,8 @@ export const SyncService = {
             await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify(newQueue));
         } catch (error) {
             console.error('Error processing queue', error);
+        } finally {
+            isProcessing = false;
         }
     }
 };

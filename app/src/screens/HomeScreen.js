@@ -26,6 +26,8 @@ const HomeScreen = ({ navigation }) => {
 
             const netState = await NetInfo.fetch();
             if (netState.isConnected) {
+                await SyncService.processQueue();
+
                 const config = { headers: { Authorization: `Bearer ${token}` } };
                 const expensesRes = await axios.get(API_URL, config);
                 setExpenses(expensesRes.data);
