@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, FlatList, ActivityIndicator, Platform } from 'react-native';
+import React, { useState, useEffect, useCallback, useLayoutEffect } from 'react';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, ActivityIndicator, Platform } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import axios from 'axios';
 import NetInfo from '@react-native-community/netinfo';
@@ -7,18 +7,15 @@ import { SyncService } from '../services/SyncService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 
 import { API_BASE_URL } from '../config';
 
 const AUTH_URL = `${API_BASE_URL}/auth`;
 const EXPENSES_URL = `${API_BASE_URL}/expenses`;
 
-const MONTHS = [
-    { label: 'January', value: 1 }, { label: 'February', value: 2 }, { label: 'March', value: 3 },
-    { label: 'April', value: 4 }, { label: 'May', value: 5 }, { label: 'June', value: 6 },
-    { label: 'July', value: 7 }, { label: 'August', value: 8 }, { label: 'September', value: 9 },
-    { label: 'October', value: 10 }, { label: 'November', value: 11 }, { label: 'December', value: 12 }
-];
+
 
 const ProfileScreen = ({ navigation }) => {
     const [user, setUser] = useState(null);
@@ -30,72 +27,44 @@ const ProfileScreen = ({ navigation }) => {
     const [newBankName, setNewBankName] = useState('');
     const [newBankAmount, setNewBankAmount] = useState('');
     const [isAddingBank, setIsAddingBank] = useState(false);
+    const [showAddBank, setShowAddBank] = useState(false);
     
     const [editingBankId, setEditingBankId] = useState(null);
     const [editBankName, setEditBankName] = useState('');
     const [editBankAmount, setEditBankAmount] = useState('');
     
-    const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
-    const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-    const [filteredExpenses, setFilteredExpenses] = useState([]);
-    const [filteredTotal, setFilteredTotal] = useState(0);
+
+    const insets = useSafeAreaInsets();
+
+    useLayoutEffect(() => {
+        navigation.setOptions({ headerShown: false });
+    }, [navigation]);
 
     const fetchProfile = async () => {
         try {
             const token = await AsyncStorage.getItem('token');
+            
+            // Instantly load from cache to prevent "Loading..." flicker
+            const cachedUser = await AsyncStorage.getItem('cached_user');
+            if (cachedUser) {
+                setUser(JSON.parse(cachedUser));
+            }
+
             const netState = await NetInfo.fetch();
             if (netState.isConnected) {
                 const res = await axios.get(`${AUTH_URL}/me`, { headers: { Authorization: `Bearer ${token}` } });
                 setUser(res.data);
                 await AsyncStorage.setItem('cached_user', JSON.stringify(res.data));
-            } else {
-                const cachedUser = await AsyncStorage.getItem('cached_user');
-                if (cachedUser) setUser(JSON.parse(cachedUser));
             }
         } catch (error) {
             console.error(error);
         }
     };
 
-    const fetchFilteredExpenses = async () => {
-        try {
-            const token = await AsyncStorage.getItem('token');
-            const netState = await NetInfo.fetch();
-            if (netState.isConnected) {
-                const res = await axios.get(`${EXPENSES_URL}/filter/${selectedYear}/${selectedMonth}`, { 
-                    headers: { Authorization: `Bearer ${token}` } 
-                });
-                setFilteredExpenses(res.data.expenses);
-                setFilteredTotal(res.data.total);
-                await AsyncStorage.setItem(`cached_expenses_${selectedYear}_${selectedMonth}`, JSON.stringify(res.data));
-            } else {
-                const cached = await AsyncStorage.getItem(`cached_expenses_${selectedYear}_${selectedMonth}`);
-                if (cached) {
-                    const data = JSON.parse(cached);
-                    setFilteredExpenses(data.expenses);
-                    setFilteredTotal(data.total);
-                }
-            }
-        } catch (error) {
-            console.error(error);
-        }
-    };
-
-    useEffect(() => {
-        fetchProfile();
-    }, []);
-
-    useFocusEffect(
-        useCallback(() => {
-            fetchFilteredExpenses();
-        }, [selectedMonth, selectedYear])
-    );
+    useEffect(() => { fetchProfile(); }, []);
 
     const handlePasswordChange = async () => {
-        if (!currentPassword || !newPassword) {
-            Alert.alert('Error', 'Please fill both password fields');
-            return;
-        }
+        if (!currentPassword || !newPassword) return Alert.alert('Error', 'Please fill both password fields');
         if (isUpdatingPassword) return;
         setIsUpdatingPassword(true);
         try {
@@ -105,20 +74,14 @@ const ProfileScreen = ({ navigation }) => {
                 { headers: { Authorization: `Bearer ${token}` } }
             );
             Alert.alert('Success', 'Password updated successfully');
-            setCurrentPassword('');
-            setNewPassword('');
+            setCurrentPassword(''); setNewPassword('');
         } catch (error) {
             Alert.alert('Error', error.response?.data?.error || 'Failed to update password');
-        } finally {
-            setIsUpdatingPassword(false);
-        }
+        } finally { setIsUpdatingPassword(false); }
     };
 
     const handleAddBank = async () => {
-        if (!newBankName || !newBankAmount) {
-            Alert.alert('Error', 'Please fill both bank name and amount');
-            return;
-        }
+        if (!newBankName || !newBankAmount) return Alert.alert('Error', 'Please fill both bank name and amount');
         if (isAddingBank) return;
         setIsAddingBank(true);
         try {
@@ -128,21 +91,16 @@ const ProfileScreen = ({ navigation }) => {
                 { headers: { Authorization: `Bearer ${token}` } }
             );
             Alert.alert('Success', 'Bank added successfully');
-            setNewBankName('');
-            setNewBankAmount('');
+            setNewBankName(''); setNewBankAmount('');
+            setShowAddBank(false);
             setUser({ ...user, banks: res.data });
         } catch (error) {
             Alert.alert('Error', error.response?.data?.error || 'Failed to add bank');
-        } finally {
-            setIsAddingBank(false);
-        }
+        } finally { setIsAddingBank(false); }
     };
 
     const handleEditBank = async (bankId) => {
-        if (!editBankName || !editBankAmount) {
-            Alert.alert('Error', 'Please fill both bank name and amount');
-            return;
-        }
+        if (!editBankName || !editBankAmount) return Alert.alert('Error', 'Please fill both fields');
         try {
             const token = await AsyncStorage.getItem('token');
             const res = await axios.put(`${AUTH_URL}/bank/${bankId}`, 
@@ -151,76 +109,74 @@ const ProfileScreen = ({ navigation }) => {
             );
             setUser({ ...user, banks: res.data });
             setEditingBankId(null);
-        } catch (error) {
-            Alert.alert('Error', error.response?.data?.error || 'Failed to update bank');
-        }
+        } catch (error) { Alert.alert('Error', 'Failed to update bank'); }
     };
 
     const handleDeleteBank = async (bankId) => {
-        Alert.alert('Delete Bank', 'Are you sure you want to delete this bank?', [
+        Alert.alert('Delete Bank', 'Are you sure?', [
             { text: 'Cancel', style: 'cancel' },
             { text: 'Delete', style: 'destructive', onPress: async () => {
                 try {
                     const token = await AsyncStorage.getItem('token');
-                    const res = await axios.delete(`${AUTH_URL}/bank/${bankId}`, { 
-                        headers: { Authorization: `Bearer ${token}` } 
-                    });
+                    const res = await axios.delete(`${AUTH_URL}/bank/${bankId}`, { headers: { Authorization: `Bearer ${token}` } });
                     setUser({ ...user, banks: res.data });
-                } catch (error) {
-                    Alert.alert('Error', error.response?.data?.error || 'Failed to delete bank');
-                }
+                } catch (error) { Alert.alert('Error', 'Failed to delete bank'); }
             }}
         ]);
     };
 
     const handleLogout = async () => {
-        await AsyncStorage.removeItem('token');
-        navigation.reset({
-            index: 0,
-            routes: [{ name: 'Login' }],
-        });
+        await AsyncStorage.clear();
+        navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
     };
-
-    const renderExpenseItem = ({ item }) => (
-        <View style={styles.expenseItem}>
-            <View>
-                <Text style={styles.expenseTitle}>{item.title}</Text>
-                <Text style={styles.expenseDate}>{new Date(item.date).toLocaleDateString()}</Text>
-            </View>
-            <Text style={styles.expenseAmount}>₹{item.amount.toFixed(2)}</Text>
-        </View>
-    );
 
     return (
         <KeyboardAwareScrollView 
-            style={{ flex: 1, backgroundColor: '#F4F7FC' }} 
-            contentContainerStyle={{ paddingBottom: 50 }} 
-            keyboardShouldPersistTaps="handled"
-            enableOnAndroid={true}
-            extraScrollHeight={20}
+            style={styles.container} 
+            contentContainerStyle={{ paddingBottom: 50, paddingTop: Math.max(insets.top + 10, 20) }} 
+            showsVerticalScrollIndicator={false}
         >
-            <View style={styles.container}>
-                {/* Profile Info */}
-            <View style={styles.card}>
-                <View style={styles.profileHeader}>
-                    <View style={styles.profileHeaderLeft}>
-                        <Ionicons name="person-circle" size={64} color="#029EEC" />
-                        <View style={styles.profileInfo}>
-                            <Text style={styles.username} numberOfLines={1} ellipsizeMode="tail">{user?.username || 'Loading...'}</Text>
-                            <Text style={styles.email} numberOfLines={1} ellipsizeMode="tail">{user?.email || 'Please wait...'}</Text>
-                        </View>
-                    </View>
-                    
-                    <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
-                        <Ionicons name="log-out-outline" size={24} color="#EF4444" />
-                    </TouchableOpacity>
-                </View>
+            {/* Custom Header */}
+            <View style={styles.headerTitleRow}>
+                <TouchableOpacity onPress={() => navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Home')} style={{ padding: 5, marginRight: 10 }}>
+                    <Ionicons name="chevron-back" size={24} color="#1E293B" />
+                </TouchableOpacity>
+                <Text style={styles.headerTitleText}>Profile</Text>
             </View>
 
+            {/* Profile Card */}
+            <LinearGradient colors={['#4F46E5', '#3730A3']} style={styles.profileCard} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+                <View style={styles.profileHeaderLeft}>
+                    <View style={styles.profileAvatarBox}>
+                        <Ionicons name="person" size={40} color="#6C5CE7" />
+                    </View>
+                    <View style={styles.profileInfo}>
+                        <Text style={styles.username} numberOfLines={1}>{user?.username || 'Loading...'}</Text>
+                        <Text style={styles.email} numberOfLines={1}>{user?.email || 'Please wait...'}</Text>
+                    </View>
+                </View>
+                
+                <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
+                    <Ionicons name="log-out-outline" size={20} color="#FFFFFF" />
+                    <Text style={styles.logoutText}>Log Out</Text>
+                </TouchableOpacity>
+            </LinearGradient>
+
             {/* Change Password */}
-            <View style={styles.card}>
-                <Text style={styles.sectionTitle}>Change Password</Text>
+            <View style={styles.sectionCard}>
+                <View style={styles.sectionHeader}>
+                    <View style={styles.sectionIconBox}>
+                        <Ionicons name="shield-checkmark" size={20} color="#4F46E5" />
+                    </View>
+                    <View style={styles.sectionTitles}>
+                        <Text style={styles.sectionTitle}>Change Password</Text>
+                        <Text style={styles.sectionSubtitle}>Keep your account secure</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
+                </View>
+
                 <View style={styles.passwordContainer}>
+                    <Ionicons name="lock-closed-outline" size={18} color="#94A3B8" style={styles.inputLeftIcon} />
                     <TextInput 
                         style={styles.passwordInput} 
                         placeholder="Current Password" 
@@ -230,10 +186,12 @@ const ProfileScreen = ({ navigation }) => {
                         secureTextEntry={!showPassword}
                     />
                     <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.eyeIcon}>
-                        <Ionicons name={showPassword ? "eye-off" : "eye"} size={20} color="gray" />
+                        <Ionicons name={showPassword ? "eye-off-outline" : "eye-outline"} size={20} color="#94A3B8" />
                     </TouchableOpacity>
                 </View>
+                
                 <View style={styles.passwordContainer}>
+                    <Ionicons name="lock-closed-outline" size={18} color="#94A3B8" style={styles.inputLeftIcon} />
                     <TextInput 
                         style={styles.passwordInput} 
                         placeholder="New Password" 
@@ -243,211 +201,170 @@ const ProfileScreen = ({ navigation }) => {
                         secureTextEntry={!showPassword}
                     />
                 </View>
+                
                 <TouchableOpacity 
-                    style={[styles.updateBtn, isUpdatingPassword && styles.updateBtnDisabled]} 
+                    style={[styles.primaryBtn, isUpdatingPassword && { opacity: 0.7 }]} 
                     onPress={handlePasswordChange}
                     disabled={isUpdatingPassword}
                 >
-                    {isUpdatingPassword ? (
-                        <ActivityIndicator size="small" color="#FFFFFF" />
-                    ) : (
-                        <Text style={styles.updateBtnText}>Update Password</Text>
+                    {isUpdatingPassword ? <ActivityIndicator size="small" color="#FFFFFF" /> : (
+                        <View style={styles.btnContentRow}>
+                            <Ionicons name="shield-checkmark" size={18} color="#FFFFFF" />
+                            <Text style={styles.primaryBtnText}>Update Password</Text>
+                        </View>
                     )}
                 </TouchableOpacity>
             </View>
 
             {/* My Banks */}
-            <View style={styles.card}>
-                <Text style={styles.sectionTitle}>My Banks</Text>
+            <View style={styles.sectionCard}>
+                <View style={styles.sectionHeader}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                        <View style={styles.sectionIconBox}>
+                            <Ionicons name="business" size={20} color="#4F46E5" />
+                        </View>
+                        <View style={styles.sectionTitles}>
+                            <Text style={styles.sectionTitle}>My Banks</Text>
+                            <Text style={styles.sectionSubtitle}>Manage your linked banks</Text>
+                        </View>
+                    </View>
+                    <TouchableOpacity 
+                        onPress={() => setShowAddBank(!showAddBank)}
+                        style={{ backgroundColor: '#EEEDFF', width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center' }}
+                    >
+                        <Ionicons name={showAddBank ? "close" : "add"} size={22} color="#4F46E5" />
+                    </TouchableOpacity>
+                </View>
+
                 {user?.banks && user.banks.length > 0 ? (
                     user.banks.map((bank, index) => (
-                        <View key={index} style={[styles.expenseItem, { flexDirection: 'column', alignItems: 'stretch' }]}>
+                        <View key={index} style={styles.bankItem}>
                             {editingBankId === bank._id ? (
-                                <View>
+                                <View style={{ flex: 1 }}>
                                     <View style={[styles.passwordContainer, { marginBottom: 10, height: 45 }]}>
-                                        <TextInput 
-                                            style={styles.passwordInput} 
-                                            value={editBankName}
-                                            onChangeText={setEditBankName}
-                                            placeholder="Bank Name"
-                                        />
+                                        <TextInput style={styles.passwordInput} value={editBankName} onChangeText={setEditBankName} placeholder="Bank Name" />
                                     </View>
                                     <View style={[styles.passwordContainer, { marginBottom: 15, height: 45 }]}>
-                                        <TextInput 
-                                            style={styles.passwordInput} 
-                                            value={editBankAmount}
-                                            onChangeText={setEditBankAmount}
-                                            placeholder="Amount"
-                                            keyboardType="numeric"
-                                        />
+                                        <TextInput style={styles.passwordInput} value={editBankAmount} onChangeText={setEditBankAmount} placeholder="Amount" keyboardType="numeric" />
                                     </View>
                                     <View style={{ flexDirection: 'row', gap: 10, justifyContent: 'flex-end' }}>
-                                        <TouchableOpacity onPress={() => setEditingBankId(null)} style={{ padding: 8, backgroundColor: '#E2E8F0', borderRadius: 8 }}>
-                                            <Text style={{ fontWeight: '600', color: '#334155' }}>Cancel</Text>
+                                        <TouchableOpacity onPress={() => setEditingBankId(null)} style={styles.cancelBtn}>
+                                            <Text style={styles.cancelBtnText}>Cancel</Text>
                                         </TouchableOpacity>
-                                        <TouchableOpacity onPress={() => handleEditBank(bank._id)} style={{ padding: 8, backgroundColor: '#029EEC', borderRadius: 8 }}>
-                                            <Text style={{ fontWeight: '600', color: '#FFF' }}>Save</Text>
+                                        <TouchableOpacity onPress={() => handleEditBank(bank._id)} style={styles.saveBtn}>
+                                            <Text style={styles.saveBtnText}>Save</Text>
                                         </TouchableOpacity>
                                     </View>
                                 </View>
                             ) : (
-                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <View>
-                                        <Text style={styles.expenseTitle}>{bank.name}</Text>
-                                        <Text style={styles.expenseAmount}>₹{bank.amount.toFixed(2)}</Text>
+                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flex: 1 }}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                        <View style={[styles.iconCircle, { backgroundColor: index % 2 === 0 ? '#E0F2FE' : '#F0F0FF' }]}>
+                                            <Ionicons name="business" size={24} color={index % 2 === 0 ? '#0EA5E9' : '#6C5CE7'} />
+                                        </View>
+                                        <View style={{ marginLeft: 12 }}>
+                                            <Text style={styles.expenseTitle}>{bank.name}</Text>
+                                            <Text style={styles.expenseDate}>₹{bank.amount.toFixed(2)}</Text>
+                                        </View>
                                     </View>
-                                    <View style={{ flexDirection: 'row', gap: 15 }}>
-                                        <TouchableOpacity onPress={() => {
-                                            setEditingBankId(bank._id);
-                                            setEditBankName(bank.name);
-                                            setEditBankAmount(bank.amount.toString());
-                                        }}>
-                                            <Ionicons name="pencil" size={20} color="#029EEC" />
+                                    <View style={{ flexDirection: 'row', gap: 10 }}>
+                                        <TouchableOpacity 
+                                            onPress={() => { setEditingBankId(bank._id); setEditBankName(bank.name); setEditBankAmount(bank.amount.toString()); }}
+                                            style={{ backgroundColor: '#EEEDFF', width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center' }}
+                                        >
+                                            <Ionicons name="create-outline" size={18} color="#4F46E5" />
                                         </TouchableOpacity>
-                                        <TouchableOpacity onPress={() => handleDeleteBank(bank._id)}>
-                                            <Ionicons name="trash" size={20} color="#EF4444" />
+                                        <TouchableOpacity 
+                                            onPress={() => handleDeleteBank(bank._id)}
+                                            style={{ backgroundColor: '#FFF0F0', width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center' }}
+                                        >
+                                            <Ionicons name="trash-outline" size={18} color="#FF4757" />
                                         </TouchableOpacity>
                                     </View>
                                 </View>
                             )}
                         </View>
                     ))
-                ) : (
-                    <Text style={styles.emptyText}>No banks added yet</Text>
-                )}
+                ) : null}
                 
-                <View style={{ marginTop: 15 }}>
-                    <Text style={{ fontWeight: '600', marginBottom: 10, color: '#334155' }}>Add New Bank</Text>
-                    <View style={styles.passwordContainer}>
-                        <TextInput 
-                            style={styles.passwordInput} 
-                            placeholder="Bank Name" 
-                            placeholderTextColor="#94A3B8"
-                            value={newBankName}
-                            onChangeText={setNewBankName}
-                        />
-                    </View>
-                    <View style={styles.passwordContainer}>
-                        <TextInput 
-                            style={styles.passwordInput} 
-                            placeholder="Initial Amount" 
-                            placeholderTextColor="#94A3B8"
-                            value={newBankAmount}
-                            onChangeText={setNewBankAmount}
-                            keyboardType="numeric"
-                        />
-                    </View>
-                    <TouchableOpacity 
-                        style={[styles.updateBtn, isAddingBank && styles.updateBtnDisabled]} 
-                        onPress={handleAddBank}
-                        disabled={isAddingBank}
-                    >
-                        {isAddingBank ? (
-                            <ActivityIndicator size="small" color="#FFFFFF" />
-                        ) : (
-                            <Text style={styles.updateBtnText}>Add Bank</Text>
-                        )}
-                    </TouchableOpacity>
-                </View>
-            </View>
-
-            {/* Monthly Report */}
-            <View style={styles.card}>
-                <Text style={styles.sectionTitle}>Monthly Report</Text>
-                
-                <View style={styles.pickerRow}>
-                    <TouchableOpacity 
-                        style={styles.pickerBtn}
-                        onPress={() => {
-                            let m = selectedMonth - 1;
-                            let y = selectedYear;
-                            if(m < 1) { m = 12; y--; }
-                            setSelectedMonth(m);
-                            setSelectedYear(y);
-                        }}
-                    >
-                        <Ionicons name="chevron-back" size={24} color="#029EEC" />
-                    </TouchableOpacity>
-                    <Text style={styles.pickerText}>{MONTHS[selectedMonth-1].label} {selectedYear}</Text>
-                    <TouchableOpacity 
-                        style={styles.pickerBtn}
-                        onPress={() => {
-                            let m = selectedMonth + 1;
-                            let y = selectedYear;
-                            if(m > 12) { m = 1; y++; }
-                            setSelectedMonth(m);
-                            setSelectedYear(y);
-                        }}
-                    >
-                        <Ionicons name="chevron-forward" size={24} color="#029EEC" />
-                    </TouchableOpacity>
-                </View>
-
-                <View style={styles.reportTotalBox}>
-                    <Text style={styles.reportTotalLabel}>Total Expenses</Text>
-                    <Text style={styles.reportTotalAmount}>₹{filteredTotal.toFixed(2)}</Text>
-                </View>
-
-                {filteredExpenses.length > 0 ? (
-                    filteredExpenses.map((item) => (
-                        <View key={item._id} style={styles.expenseItem}>
-                            <View>
-                                <Text style={styles.expenseTitle}>{item.title}</Text>
-                                <Text style={styles.expenseDate}>{new Date(item.date).toLocaleDateString()}</Text>
-                            </View>
-                            <Text style={styles.expenseAmount}>₹{item.amount.toFixed(2)}</Text>
+                {showAddBank && (
+                    <View style={{ marginTop: 15, paddingTop: 15, borderTopWidth: 1, borderTopColor: '#F1F5F9' }}>
+                        <View style={styles.passwordContainer}>
+                            <TextInput style={styles.passwordInput} placeholder="Bank Name" placeholderTextColor="#94A3B8" value={newBankName} onChangeText={setNewBankName} />
                         </View>
-                    ))
-                ) : (
-                    <Text style={styles.emptyText}>No expenses this month</Text>
+                        <View style={styles.passwordContainer}>
+                            <TextInput style={styles.passwordInput} placeholder="Initial Amount" placeholderTextColor="#94A3B8" value={newBankAmount} onChangeText={setNewBankAmount} keyboardType="numeric" />
+                        </View>
+                        <TouchableOpacity style={[styles.primaryBtn, isAddingBank && { opacity: 0.7 }]} onPress={handleAddBank} disabled={isAddingBank}>
+                            {isAddingBank ? <ActivityIndicator size="small" color="#FFFFFF" /> : (
+                                <View style={styles.btnContentRow}>
+                                    <Ionicons name="add" size={18} color="#FFFFFF" />
+                                    <Text style={styles.primaryBtnText}>Add Bank</Text>
+                                </View>
+                            )}
+                        </TouchableOpacity>
+                    </View>
                 )}
             </View>
-            </View>
+
+
         </KeyboardAwareScrollView>
     );
 };
 
 const styles = StyleSheet.create({
-    container: { flex: 1, padding: 20 },
-    card: { 
-        backgroundColor: '#FFFFFF', padding: 20, borderRadius: 16, marginBottom: 20,
-        shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 2,
-        borderWidth: 1, borderColor: '#E2E8F0'
+    container: { flex: 1, backgroundColor: '#F9F9FB', paddingHorizontal: 20 },
+    
+    headerTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', marginBottom: 20 },
+    headerTitleText: { fontSize: 18, fontWeight: '800', color: '#1E293B' },
+    
+    // Profile Card
+    profileCard: { 
+        padding: 20, borderRadius: 24, marginBottom: 20,
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+        shadowColor: '#4F46E5', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 12, elevation: 8
     },
-    profileHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
     profileHeaderLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+    profileAvatarBox: { width: 64, height: 64, borderRadius: 32, backgroundColor: '#FFFFFF', justifyContent: 'center', alignItems: 'center' },
     profileInfo: { marginLeft: 15, flex: 1 },
-    username: { fontSize: 20, fontWeight: '800', color: '#1E293B', marginBottom: 2 },
-    email: { fontSize: 13, color: '#64748B', fontWeight: '500' },
-    logoutBtn: { backgroundColor: '#FEE2E2', padding: 12, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+    username: { fontSize: 20, fontWeight: '800', color: '#FFFFFF', marginBottom: 2 },
+    email: { fontSize: 13, color: '#C7D2FE', fontWeight: '500' },
+    logoutBtn: { backgroundColor: 'rgba(255,255,255,0.15)', paddingVertical: 10, paddingHorizontal: 12, borderRadius: 14, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
+    logoutText: { color: '#FFFFFF', fontSize: 10, fontWeight: '700', marginTop: 4 },
     
-    sectionTitle: { fontSize: 18, fontWeight: '700', color: '#1E293B', marginBottom: 15 },
+    // Cards
+    sectionCard: { 
+        backgroundColor: '#FFFFFF', padding: 22, borderRadius: 24, marginBottom: 20,
+        shadowColor: '#94A3B8', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 10, elevation: 2,
+    },
+    sectionHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
+    sectionIconBox: { backgroundColor: '#EEEDFF', width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+    sectionTitles: { marginLeft: 15, flex: 1 },
+    sectionTitle: { fontSize: 16, fontWeight: '800', color: '#1E293B' },
+    sectionSubtitle: { fontSize: 12, color: '#94A3B8', fontWeight: '500', marginTop: 2 },
+    
+    // Inputs & Buttons
     passwordContainer: { 
-        flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8FAFC', borderRadius: 12, 
-        borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 15 
+        flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8FAFC', borderRadius: 16, 
+        borderWidth: 1, borderColor: '#F1F5F9', marginBottom: 15 
     },
-    passwordInput: { flex: 1, height: 50, paddingHorizontal: 15, fontSize: 15 },
+    inputLeftIcon: { marginLeft: 15 },
+    passwordInput: { flex: 1, height: 50, paddingHorizontal: 12, fontSize: 14, color: '#1E293B', fontWeight: '500' },
     eyeIcon: { padding: 15 },
-    updateBtn: { backgroundColor: '#029EEC', padding: 15, borderRadius: 12, alignItems: 'center' },
-    updateBtnDisabled: { backgroundColor: '#6CBCE9' },
-    updateBtnText: { color: '#FFF', fontWeight: '700', fontSize: 16 },
-
-    pickerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, backgroundColor: '#F8FAFC', borderRadius: 12, padding: 5 },
-    pickerBtn: { padding: 10 },
-    pickerText: { fontSize: 16, fontWeight: '700', color: '#334155' },
-    reportTotalBox: { alignItems: 'center', backgroundColor: '#029EEC', padding: 20, borderRadius: 12, marginBottom: 20 },
-    reportTotalLabel: { color: '#E0E7FF', fontSize: 14, fontWeight: '500', marginBottom: 5 },
-    reportTotalAmount: { color: '#FFFFFF', fontSize: 32, fontWeight: '800' },
     
-    expenseItem: { 
-        flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', 
-        backgroundColor: '#FFFFFF', paddingVertical: 15, paddingHorizontal: 10,
-        borderBottomWidth: 1, borderBottomColor: '#E2E8F0'
-    },
-    expenseTitle: { fontSize: 16, fontWeight: '600', color: '#334155' },
-    expenseDate: { fontSize: 12, color: '#64748B', marginTop: 3 },
-    expenseAmount: { fontSize: 16, fontWeight: '700', color: '#EF4444' },
-    emptyText: { textAlign: 'center', color: '#94A3B8', marginTop: 10, fontStyle: 'italic' }
+    primaryBtn: { backgroundColor: '#4F46E5', padding: 14, borderRadius: 16, alignItems: 'center' },
+    btnContentRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    primaryBtnText: { color: '#FFF', fontWeight: '700', fontSize: 15 },
+
+    cancelBtn: { padding: 10, backgroundColor: '#F1F5F9', borderRadius: 12, paddingHorizontal: 16 },
+    cancelBtnText: { fontWeight: '700', color: '#64748B' },
+    saveBtn: { padding: 10, backgroundColor: '#4F46E5', borderRadius: 12, paddingHorizontal: 16 },
+    saveBtnText: { fontWeight: '700', color: '#FFF' },
+    
+    // Banks & List items
+    bankItem: { marginBottom: 15, paddingBottom: 15, borderBottomWidth: 1, borderBottomColor: '#F8FAFC' },
+    iconCircle: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' },
+    
 });
 
 export default ProfileScreen;

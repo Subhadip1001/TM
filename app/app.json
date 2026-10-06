@@ -1,24 +1,24 @@
 {
   "expo": {
-    "name": "TM",
-    "slug": "TM",
+    "name": "Balancy",
+    "slug": "balancy",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.jpg",
+    "icon": "./assets/icon.png",
     "scheme": "app",
     "userInterfaceStyle": "automatic",
     "splash": {
-      "image": "./assets/splash.jpg",
+      "image": "./assets/icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#029EEC"
+      "backgroundColor": "#4F46E5"
     },
     "ios": {
-      "icon": "./assets/icon.jpg"
+      "icon": "./assets/icon.png"
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#029EEC",
-        "foregroundImage": "./assets/icon.jpg"
+        "backgroundColor": "#4F46E5",
+        "foregroundImage": "./assets/icon.png"
       },
       "predictiveBackGestureEnabled": false,
       "package": "com.subha002.app"
@@ -31,8 +31,8 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#029EEC",
-          "image": "./assets/splash.jpg",
+          "backgroundColor": "#4F46E5",
+          "image": "./assets/icon.png",
           "imageWidth": 200
         }
       ],

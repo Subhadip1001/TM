@@ -52,6 +52,11 @@ const SignupScreen = ({ navigation }) => {
             extraScrollHeight={20}
         >
             <View>
+                <View style={{ alignItems: 'center', marginBottom: 20 }}>
+                    <View style={{ backgroundColor: '#EEEDFF', padding: 20, borderRadius: 24 }}>
+                        <Ionicons name="wallet" size={40} color="#4F46E5" />
+                    </View>
+                </View>
                 <Text style={styles.title}>Create Account</Text>
 
             {errorMessage ? (
@@ -113,32 +118,32 @@ const SignupScreen = ({ navigation }) => {
 };
 
 const styles = StyleSheet.create({
-    container: { flexGrow: 1, justifyContent: 'center', padding: 25 },
-    title: { fontSize: 36, fontWeight: '800', marginBottom: 40, textAlign: 'center', color: '#1E293B', letterSpacing: 0.5 },
+    container: { flexGrow: 1, justifyContent: 'center', padding: 25, backgroundColor: '#F8FAFC' },
+    title: { fontSize: 36, fontWeight: '900', marginBottom: 40, textAlign: 'center', color: '#0F172A', letterSpacing: -0.5 },
     input: { 
-        height: 55, backgroundColor: '#FFFFFF', borderRadius: 12, paddingHorizontal: 20, marginBottom: 20, 
-        borderWidth: 1, borderColor: '#E2E8F0', fontSize: 16, color: '#334155',
-        shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 2
+        height: 60, backgroundColor: '#FFFFFF', borderRadius: 16, paddingHorizontal: 20, marginBottom: 20, 
+        borderWidth: 1, borderColor: '#F1F5F9', fontSize: 16, color: '#1E293B', fontWeight: '500',
+        shadowColor: '#94A3B8', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 10, elevation: 2
     },
     passwordContainer: { 
-        flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 12, 
-        borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 25,
-        shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 2
+        flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 16, 
+        borderWidth: 1, borderColor: '#F1F5F9', marginBottom: 25,
+        shadowColor: '#94A3B8', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 10, elevation: 2
     },
     errorContainer: { 
-        flexDirection: 'row', alignItems: 'center', backgroundColor: '#FEF2F2', padding: 15, borderRadius: 12, marginBottom: 20,
-        borderWidth: 1, borderColor: '#FECACA'
+        flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF1F2', padding: 15, borderRadius: 16, marginBottom: 20,
+        borderWidth: 1, borderColor: '#FECDD3'
     },
-    errorText: { color: '#EF4444', fontSize: 14, fontWeight: '600', marginLeft: 8, flex: 1 },
-    passwordInput: { flex: 1, height: 55, paddingHorizontal: 20, fontSize: 16, color: '#334155' },
+    errorText: { color: '#E11D48', fontSize: 14, fontWeight: '600', marginLeft: 8, flex: 1 },
+    passwordInput: { flex: 1, height: 60, paddingHorizontal: 20, fontSize: 16, color: '#1E293B', fontWeight: '500' },
     eyeIcon: { padding: 15 },
     button: { 
-        backgroundColor: '#029EEC', height: 55, borderRadius: 12, justifyContent: 'center', alignItems: 'center', 
-        marginTop: 10, shadowColor: '#029EEC', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 5, elevation: 5
+        backgroundColor: '#4F46E5', height: 60, borderRadius: 16, justifyContent: 'center', alignItems: 'center', 
+        marginTop: 10, shadowColor: '#4F46E5', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.35, shadowRadius: 15, elevation: 8
     },
-    buttonDisabled: { backgroundColor: '#6CBCE9' },
-    buttonText: { color: '#FFFFFF', fontSize: 18, fontWeight: '700', letterSpacing: 0.5 },
-    linkText: { color: '#029EEC', marginTop: 25, textAlign: 'center', fontSize: 16, fontWeight: '600' }
+    buttonDisabled: { backgroundColor: '#818CF8' },
+    buttonText: { color: '#FFFFFF', fontSize: 18, fontWeight: '800', letterSpacing: 0.5 },
+    linkText: { color: '#4F46E5', marginTop: 30, textAlign: 'center', fontSize: 16, fontWeight: '700' }
 });
 
 export default SignupScreen;

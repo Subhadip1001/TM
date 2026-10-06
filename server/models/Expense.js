@@ -20,6 +20,10 @@ const ExpenseSchema = new mongoose.Schema({
     date: {
         type: Date,
         default: Date.now
+    },
+    category: {
+        type: String,
+        default: 'Other'
     }
 }, { timestamps: true });
 
