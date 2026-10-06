@@ -1,5 +1,5 @@
-import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, LayoutAnimation, UIManager, Platform } from 'react-native';
+import React, { useState, useCallback, useEffect } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, LayoutAnimation, UIManager, Platform, DeviceEventEmitter } from 'react-native';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
     UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -44,6 +44,22 @@ const HomeScreen = ({ navigation }) => {
     const currentMonth = new Date().getMonth() + 1;
     const currentYear = new Date().getFullYear();
     const insets = useSafeAreaInsets();
+
+    useEffect(() => {
+        const sub = DeviceEventEmitter.addListener('expenseUpdated', (updatedExpense) => {
+            setExpenses(prev => {
+                const newExps = [...prev];
+                const idx = newExps.findIndex(e => e._id === updatedExpense._id);
+                if (idx !== -1) {
+                    newExps[idx] = { ...newExps[idx], ...updatedExpense };
+                } else {
+                    newExps.unshift(updatedExpense);
+                }
+                return newExps;
+            });
+        });
+        return () => sub.remove();
+    }, []);
 
     const fetchData = async () => {
         try {

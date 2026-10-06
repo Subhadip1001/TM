@@ -4,6 +4,7 @@ import { createStackNavigator } from '@react-navigation/stack';
 import { useShareIntent } from 'expo-share-intent';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
+import * as SplashScreen from 'expo-splash-screen';
 import { API_BASE_URL } from './src/config';
 import LoginScreen from './src/screens/LoginScreen';
 import SignupScreen from './src/screens/SignupScreen';
@@ -13,6 +14,9 @@ import ProfileScreen from './src/screens/ProfileScreen';
 
 const Stack = createStackNavigator();
 export const navigationRef = createNavigationContainerRef();
+
+// Keep the splash screen visible while we fetch resources
+SplashScreen.preventAutoHideAsync();
 
 export default function App() {
   const { hasShareIntent, shareIntent, resetShareIntent, error } = useShareIntent();
@@ -29,6 +33,9 @@ export default function App() {
         }
       } catch (err) {
         setInitialRoute('Login');
+      } finally {
+        // Hide the splash screen after auth check is complete
+        await SplashScreen.hideAsync();
       }
     };
     checkAuth();

@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useLayoutEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView, Modal } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView, Modal, DeviceEventEmitter } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import axios from 'axios';
 import NetInfo from '@react-native-community/netinfo';
@@ -124,16 +124,18 @@ const AddExpenseScreen = ({ navigation, route }) => {
             const cachedTotalStr = await AsyncStorage.getItem(`cached_home_total_${year}_${month}`);
             let cachedTotal = cachedTotalStr ? parseFloat(cachedTotalStr) : 0;
             
+            const cacheExpenseData = { ...expenseData };
             if (expenseToEdit) {
+                cacheExpenseData._id = expenseToEdit._id;
                 const index = cachedExps.findIndex(e => e._id === expenseToEdit._id);
                 if (index !== -1) {
                     cachedTotal -= cachedExps[index].amount;
-                    cachedExps[index] = { ...cachedExps[index], ...expenseData };
+                    cachedExps[index] = { ...cachedExps[index], ...cacheExpenseData };
                     cachedTotal += expenseData.amount;
                 }
             } else {
-                expenseData._id = uuid.v4(); 
-                cachedExps.unshift(expenseData);
+                cacheExpenseData._id = uuid.v4(); 
+                cachedExps.unshift(cacheExpenseData);
                 cachedTotal += expenseData.amount;
             }
 
@@ -157,10 +159,12 @@ const AddExpenseScreen = ({ navigation, route }) => {
                 await SyncService.addToQueue({
                     type: expenseToEdit ? 'EDIT_EXPENSE' : 'ADD_EXPENSE',
                     expenseId: expenseToEdit ? expenseToEdit._id : undefined,
-                    localId: expenseData._id,
+                    localId: expenseToEdit ? undefined : cacheExpenseData._id,
                     data: expenseData
                 });
             }
+            
+            DeviceEventEmitter.emit('expenseUpdated', cacheExpenseData);
             
             if (navigation.canGoBack()) {
                 navigation.goBack();
