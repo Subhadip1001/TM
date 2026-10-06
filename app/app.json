@@ -7,6 +7,11 @@
     "icon": "./assets/icon.jpg",
     "scheme": "app",
     "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/splash.jpg",
+      "resizeMode": "contain",
+      "backgroundColor": "#029EEC"
+    },
     "ios": {
       "icon": "./assets/icon.jpg"
     },
