@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
+import { DeviceEventEmitter } from 'react-native';
 import axios from 'axios';
 import { API_BASE_URL } from '../config';
 
@@ -50,6 +51,7 @@ export const SyncService = {
             
             // We need to keep track of local IDs mapped to real IDs
             const idMapping = {};
+            const syncedLocalIds = [];
 
             const newQueue = [];
             
@@ -59,21 +61,30 @@ export const SyncService = {
                     if (action.type === 'ADD_EXPENSE') {
                         const data = { ...action.data };
                         delete data._id; // Prevent Cast to ObjectId error
+                        if (!data.bankId || data.bankId === 'null') {
+                            delete data.bankId;
+                        }
                         const res = await axios.post(EXPENSES_URL, data, config);
-                        idMapping[action.localId] = res.data._id;
+                        if (action.localId && res.data?._id) {
+                            idMapping[action.localId] = res.data._id;
+                            syncedLocalIds.push({ localId: action.localId, realExpense: res.data });
+                        }
                     } 
                     else if (action.type === 'EDIT_EXPENSE') {
                         const realId = idMapping[action.expenseId] || action.expenseId;
                         // Avoid trying to put with a UUID if it wasn't mapped
-                        if (!realId.includes('-')) {
+                        if (realId && !realId.includes('-')) {
                             const data = { ...action.data };
                             delete data._id;
+                            if (!data.bankId || data.bankId === 'null') {
+                                data.bankId = null;
+                            }
                             await axios.put(`${EXPENSES_URL}/${realId}`, data, config);
                         }
                     }
                     else if (action.type === 'DELETE_EXPENSE') {
                         const realId = idMapping[action.expenseId] || action.expenseId;
-                        if (!realId.includes('-')) {
+                        if (realId && !realId.includes('-')) {
                             await axios.delete(`${EXPENSES_URL}/${realId}`, config);
                         }
                     }
@@ -82,14 +93,46 @@ export const SyncService = {
                     }
                 } catch (err) {
                     console.error('Failed to sync action', action, err.response?.data || err.message);
-                    // Keep in queue if it's a network error (like 500 or timeout)
-                    if (err.message === 'Network Error' || String(err).includes('Network')) {
+                    // Keep in queue if it's a network error or 5xx server error
+                    const status = err.response?.status;
+                    if (!status || status >= 500 || err.message === 'Network Error' || String(err).includes('Network')) {
                         newQueue.push(action);
                     }
                 }
             }
             
             await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify(newQueue));
+
+            // If any local items got real MongoDB _id, update cache and notify UI
+            if (syncedLocalIds.length > 0) {
+                try {
+                    const keys = await AsyncStorage.getAllKeys();
+                    const expenseKeys = keys.filter(k => k.startsWith('cached_home_expenses_'));
+                    for (const key of expenseKeys) {
+                        const str = await AsyncStorage.getItem(key);
+                        if (str) {
+                            let list = JSON.parse(str);
+                            let changed = false;
+                            list = list.map(item => {
+                                const match = syncedLocalIds.find(s => s.localId === item._id);
+                                if (match) {
+                                    changed = true;
+                                    return { ...item, ...match.realExpense, _id: match.realExpense._id };
+                                }
+                                return item;
+                            });
+                            if (changed) {
+                                await AsyncStorage.setItem(key, JSON.stringify(list));
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.error('Error updating cached local IDs after sync:', e);
+                }
+            }
+
+            // Notify listeners that sync completed so HomeScreen / ProfileScreen can refresh
+            DeviceEventEmitter.emit('syncCompleted', { syncedCount: syncedLocalIds.length });
         } catch (error) {
             console.error('Error processing queue', error);
         } finally {

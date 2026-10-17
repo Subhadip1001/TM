@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useLayoutEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, ActivityIndicator, Platform, DeviceEventEmitter } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import axios from 'axios';
 import NetInfo from '@react-native-community/netinfo';
@@ -9,16 +9,100 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-
+import Svg, { G, Circle } from 'react-native-svg';
+import { useTheme } from '../context/ThemeContext';
 import { API_BASE_URL } from '../config';
 
 const AUTH_URL = `${API_BASE_URL}/auth`;
 const EXPENSES_URL = `${API_BASE_URL}/expenses`;
 
+const CATEGORY_COLORS = {
+    food: '#FF6B6B',
+    shopping: '#6C5CE7',
+    bills: '#20BF6B',
+    entertainment: '#F59E0B',
+    transport: '#0EA5E9',
+    other: '#64748B'
+};
 
+const getCategoryIcon = (category) => {
+    switch(category?.toLowerCase()) {
+        case 'food': return { bg: '#FFF0F0', color: CATEGORY_COLORS.food, name: 'restaurant-outline' };
+        case 'shopping': return { bg: '#F0F0FF', color: CATEGORY_COLORS.shopping, name: 'cart-outline' };
+        case 'bills': return { bg: '#E6F9F0', color: CATEGORY_COLORS.bills, name: 'receipt-outline' };
+        case 'entertainment': return { bg: '#FFF6E5', color: CATEGORY_COLORS.entertainment, name: 'play-outline' };
+        case 'transport': return { bg: '#E0F2FE', color: CATEGORY_COLORS.transport, name: 'car-outline' };
+        default: return { bg: '#F1F5F9', color: CATEGORY_COLORS.other, name: 'wallet-outline' };
+    }
+};
+
+const RADIUS = 43;
+const STROKE_WIDTH = 14;
+const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
+
+const CategoryPieChart = ({ data = [], total = 0, colors, isDark }) => {
+    const validTotal = total > 0 ? total : data.reduce((acc, d) => acc + (Number(d.amount) || 0), 0);
+    let accumulatedOffset = 0;
+
+    const validData = (data || []).filter(item => Number(item.amount) > 0);
+
+    const slices = validData.map((item, idx) => {
+        const percentage = validTotal > 0 ? (Number(item.amount) / validTotal) : 0;
+        const strokeLength = percentage * CIRCUMFERENCE;
+        // Small 1.5px gap between multiple slices for crisp modern look
+        const sliceLength = validData.length > 1 ? Math.max(strokeLength - 1.5, 0.5) : strokeLength;
+        const gap = CIRCUMFERENCE - sliceLength;
+        const offset = -accumulatedOffset;
+        accumulatedOffset += strokeLength;
+
+        return (
+            <Circle
+                key={idx}
+                cx={55}
+                cy={55}
+                r={RADIUS}
+                stroke={item.color || '#4F46E5'}
+                strokeWidth={STROKE_WIDTH}
+                fill="none"
+                strokeDasharray={`${sliceLength} ${gap}`}
+                strokeDashoffset={offset}
+                strokeLinecap="butt"
+            />
+        );
+    });
+
+    return (
+        <View style={styles.chartWrapper}>
+            <View style={{ width: 110, height: 110, alignItems: 'center', justifyContent: 'center' }}>
+                <Svg width={110} height={110} viewBox="0 0 110 110">
+                    <Circle
+                        cx={55}
+                        cy={55}
+                        r={RADIUS}
+                        stroke={isDark ? '#233047' : '#F1F5F9'}
+                        strokeWidth={STROKE_WIDTH}
+                        fill="none"
+                    />
+                    <G transform="rotate(-90 55 55)">
+                        {slices}
+                    </G>
+                </Svg>
+                <View style={[styles.ringInner, { backgroundColor: colors ? colors.card : '#FFFFFF' }]}>
+                    <Text style={[styles.chartCenterSubtitle, { color: colors ? colors.textSecondary : '#94A3B8' }]}>Total</Text>
+                    <Text style={[styles.chartCenterValue, { color: colors ? colors.text : '#1E293B' }] } numberOfLines={1}>
+                        ₹{validTotal >= 100000 ? `${(validTotal / 1000).toFixed(1)}k` : validTotal.toFixed(0)}
+                    </Text>
+                </View>
+            </View>
+        </View>
+    );
+};
 
 const ProfileScreen = ({ navigation }) => {
+    const { colors, isDark } = useTheme();
     const [user, setUser] = useState(null);
+    const [expenses, setExpenses] = useState([]);
+    const [monthlyTotal, setMonthlyTotal] = useState(0);
     const [currentPassword, setCurrentPassword] = useState('');
     const [newPassword, setNewPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
@@ -61,7 +145,71 @@ const ProfileScreen = ({ navigation }) => {
         }
     };
 
-    useEffect(() => { fetchProfile(); }, []);
+    const currentMonth = new Date().getMonth() + 1;
+    const currentYear = new Date().getFullYear();
+
+    const fetchExpenses = async () => {
+        try {
+            const cachedExps = await AsyncStorage.getItem(`cached_home_expenses_${currentYear}_${currentMonth}`);
+            if (cachedExps) {
+                setExpenses(JSON.parse(cachedExps));
+            }
+            const cachedTotal = await AsyncStorage.getItem(`cached_home_total_${currentYear}_${currentMonth}`);
+            if (cachedTotal) {
+                setMonthlyTotal(JSON.parse(cachedTotal));
+            }
+        } catch (e) {
+            console.error('Error fetching cached expenses in profile:', e);
+        }
+    };
+
+    useEffect(() => { 
+        fetchProfile(); 
+        fetchExpenses();
+
+        const bankSub = DeviceEventEmitter.addListener('bankUpdated', () => {
+            fetchProfile();
+        });
+
+        const expSub = DeviceEventEmitter.addListener('expenseUpdated', () => {
+            fetchProfile();
+            fetchExpenses();
+        });
+
+        const syncSub = DeviceEventEmitter.addListener('syncCompleted', () => {
+            fetchProfile();
+            fetchExpenses();
+        });
+
+        return () => {
+            bankSub.remove();
+            expSub.remove();
+            syncSub.remove();
+        };
+    }, []);
+
+    useFocusEffect(
+        useCallback(() => {
+            fetchProfile();
+            fetchExpenses();
+        }, [])
+    );
+
+    const categoryStats = React.useMemo(() => {
+        const stats = {};
+        expenses.forEach(exp => {
+            const rawCat = (exp.category || 'Other').trim();
+            const cat = rawCat.charAt(0).toUpperCase() + rawCat.slice(1).toLowerCase();
+            const color = CATEGORY_COLORS[cat.toLowerCase()] || CATEGORY_COLORS.other;
+            if (!stats[cat]) {
+                stats[cat] = { category: cat, amount: 0, count: 0, color };
+            }
+            stats[cat].amount += Number(exp.amount) || 0;
+            stats[cat].count += 1;
+        });
+
+        return Object.values(stats).sort((a, b) => b.amount - a.amount);
+    }, [expenses]);
 
     const handlePasswordChange = async () => {
         if (!currentPassword || !newPassword) return Alert.alert('Error', 'Please fill both password fields');
@@ -94,6 +242,14 @@ const ProfileScreen = ({ navigation }) => {
             setNewBankName(''); setNewBankAmount('');
             setShowAddBank(false);
             setUser({ ...user, banks: res.data });
+            AsyncStorage.getItem('cached_user').then(str => {
+                if (str) {
+                    const u = JSON.parse(str);
+                    u.banks = res.data;
+                    AsyncStorage.setItem('cached_user', JSON.stringify(u));
+                }
+            });
+            DeviceEventEmitter.emit('bankUpdated');
         } catch (error) {
             Alert.alert('Error', error.response?.data?.error || 'Failed to add bank');
         } finally { setIsAddingBank(false); }
@@ -108,6 +264,14 @@ const ProfileScreen = ({ navigation }) => {
                 { headers: { Authorization: `Bearer ${token}` } }
             );
             setUser({ ...user, banks: res.data });
+            AsyncStorage.getItem('cached_user').then(str => {
+                if (str) {
+                    const u = JSON.parse(str);
+                    u.banks = res.data;
+                    AsyncStorage.setItem('cached_user', JSON.stringify(u));
+                }
+            });
+            DeviceEventEmitter.emit('bankUpdated');
             setEditingBankId(null);
         } catch (error) { Alert.alert('Error', 'Failed to update bank'); }
     };
@@ -120,6 +284,14 @@ const ProfileScreen = ({ navigation }) => {
                     const token = await AsyncStorage.getItem('token');
                     const res = await axios.delete(`${AUTH_URL}/bank/${bankId}`, { headers: { Authorization: `Bearer ${token}` } });
                     setUser({ ...user, banks: res.data });
+                    AsyncStorage.getItem('cached_user').then(str => {
+                        if (str) {
+                            const u = JSON.parse(str);
+                            u.banks = res.data;
+                            AsyncStorage.setItem('cached_user', JSON.stringify(u));
+                        }
+                    });
+                    DeviceEventEmitter.emit('bankUpdated');
                 } catch (error) { Alert.alert('Error', 'Failed to delete bank'); }
             }}
         ]);
@@ -131,17 +303,15 @@ const ProfileScreen = ({ navigation }) => {
     };
 
     return (
-        <KeyboardAwareScrollView 
-            style={styles.container} 
-            contentContainerStyle={{ paddingBottom: 50, paddingTop: Math.max(insets.top + 10, 20) }} 
-            showsVerticalScrollIndicator={false}
-        >
+        <View style={{ flex: 1, backgroundColor: colors.background }}>
+            <KeyboardAwareScrollView 
+                style={[styles.container, { backgroundColor: colors.background }]} 
+                contentContainerStyle={{ paddingBottom: 24, paddingTop: Math.max(insets.top + 10, 20) }} 
+                showsVerticalScrollIndicator={false}
+            >
             {/* Custom Header */}
             <View style={styles.headerTitleRow}>
-                <TouchableOpacity onPress={() => navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Home')} style={{ padding: 5, marginRight: 10 }}>
-                    <Ionicons name="chevron-back" size={24} color="#1E293B" />
-                </TouchableOpacity>
-                <Text style={styles.headerTitleText}>Profile</Text>
+                <Text style={[styles.headerTitleText, { color: colors.text }]}>Profile</Text>
             </View>
 
             {/* Profile Card */}
@@ -163,39 +333,39 @@ const ProfileScreen = ({ navigation }) => {
             </LinearGradient>
 
             {/* Change Password */}
-            <View style={styles.sectionCard}>
+            <View style={[styles.sectionCard, { backgroundColor: colors.card, borderColor: colors.cardBorder, borderWidth: isDark ? 1 : 0 }]}>
                 <View style={styles.sectionHeader}>
-                    <View style={styles.sectionIconBox}>
-                        <Ionicons name="shield-checkmark" size={20} color="#4F46E5" />
+                    <View style={[styles.sectionIconBox, { backgroundColor: colors.primaryLight }]}>
+                        <Ionicons name="shield-checkmark" size={20} color={colors.primary} />
                     </View>
                     <View style={styles.sectionTitles}>
-                        <Text style={styles.sectionTitle}>Change Password</Text>
-                        <Text style={styles.sectionSubtitle}>Keep your account secure</Text>
+                        <Text style={[styles.sectionTitle, { color: colors.text }]}>Change Password</Text>
+                        <Text style={[styles.sectionSubtitle, { color: colors.textSecondary }]}>Keep your account secure</Text>
                     </View>
                     <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
                 </View>
 
-                <View style={styles.passwordContainer}>
-                    <Ionicons name="lock-closed-outline" size={18} color="#94A3B8" style={styles.inputLeftIcon} />
+                <View style={[styles.passwordContainer, { backgroundColor: colors.inputBg, borderColor: colors.border }]}>
+                    <Ionicons name="lock-closed-outline" size={18} color={colors.textSecondary} style={styles.inputLeftIcon} />
                     <TextInput 
-                        style={styles.passwordInput} 
+                        style={[styles.passwordInput, { color: colors.text }]} 
                         placeholder="Current Password" 
-                        placeholderTextColor="#94A3B8"
+                        placeholderTextColor={colors.textMuted}
                         value={currentPassword}
                         onChangeText={setCurrentPassword}
                         secureTextEntry={!showPassword}
                     />
                     <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.eyeIcon}>
-                        <Ionicons name={showPassword ? "eye-off-outline" : "eye-outline"} size={20} color="#94A3B8" />
+                        <Ionicons name={showPassword ? "eye-off-outline" : "eye-outline"} size={20} color={colors.textSecondary} />
                     </TouchableOpacity>
                 </View>
                 
-                <View style={styles.passwordContainer}>
-                    <Ionicons name="lock-closed-outline" size={18} color="#94A3B8" style={styles.inputLeftIcon} />
+                <View style={[styles.passwordContainer, { backgroundColor: colors.inputBg, borderColor: colors.border }]}>
+                    <Ionicons name="lock-closed-outline" size={18} color={colors.textSecondary} style={styles.inputLeftIcon} />
                     <TextInput 
-                        style={styles.passwordInput} 
+                        style={[styles.passwordInput, { color: colors.text }]} 
                         placeholder="New Password" 
-                        placeholderTextColor="#94A3B8"
+                        placeholderTextColor={colors.textMuted}
                         value={newPassword}
                         onChangeText={setNewPassword}
                         secureTextEntry={!showPassword}
@@ -217,22 +387,22 @@ const ProfileScreen = ({ navigation }) => {
             </View>
 
             {/* My Banks */}
-            <View style={styles.sectionCard}>
+            <View style={[styles.sectionCard, { backgroundColor: colors.card, borderColor: colors.cardBorder, borderWidth: isDark ? 1 : 0 }]}>
                 <View style={styles.sectionHeader}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-                        <View style={styles.sectionIconBox}>
-                            <Ionicons name="business" size={20} color="#4F46E5" />
+                        <View style={[styles.sectionIconBox, { backgroundColor: colors.primaryLight }]}>
+                            <Ionicons name="business" size={20} color={colors.primary} />
                         </View>
                         <View style={styles.sectionTitles}>
-                            <Text style={styles.sectionTitle}>My Banks</Text>
-                            <Text style={styles.sectionSubtitle}>Manage your linked banks</Text>
+                            <Text style={[styles.sectionTitle, { color: colors.text }]}>My Banks</Text>
+                            <Text style={[styles.sectionSubtitle, { color: colors.textSecondary }]}>Manage your linked banks</Text>
                         </View>
                     </View>
                     <TouchableOpacity 
                         onPress={() => setShowAddBank(!showAddBank)}
-                        style={{ backgroundColor: '#EEEDFF', width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center' }}
+                        style={{ backgroundColor: colors.primaryLight, width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center' }}
                     >
-                        <Ionicons name={showAddBank ? "close" : "add"} size={22} color="#4F46E5" />
+                        <Ionicons name={showAddBank ? "close" : "add"} size={22} color={colors.primary} />
                     </TouchableOpacity>
                 </View>
 
@@ -254,29 +424,28 @@ const ProfileScreen = ({ navigation }) => {
                                         <TouchableOpacity onPress={() => handleEditBank(bank._id)} style={styles.saveBtn}>
                                             <Text style={styles.saveBtnText}>Save</Text>
                                         </TouchableOpacity>
-                                    </View>
-                                </View>
+                                    </View>                                 </View>
                             ) : (
                                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flex: 1 }}>
                                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                        <View style={[styles.iconCircle, { backgroundColor: index % 2 === 0 ? '#E0F2FE' : '#F0F0FF' }]}>
+                                        <View style={[styles.iconCircle, { backgroundColor: index % 2 === 0 ? (isDark ? 'rgba(14, 165, 233, 0.15)' : '#E0F2FE') : (isDark ? 'rgba(108, 92, 231, 0.15)' : '#F0F0FF') }]}>
                                             <Ionicons name="business" size={24} color={index % 2 === 0 ? '#0EA5E9' : '#6C5CE7'} />
                                         </View>
                                         <View style={{ marginLeft: 12 }}>
-                                            <Text style={styles.expenseTitle}>{bank.name}</Text>
-                                            <Text style={styles.expenseDate}>₹{bank.amount.toFixed(2)}</Text>
+                                            <Text style={[styles.expenseTitle, { color: colors.text }]}>{bank.name}</Text>
+                                            <Text style={[styles.expenseDate, { color: colors.textSecondary }]}>₹{bank.amount.toFixed(2)}</Text>
                                         </View>
                                     </View>
                                     <View style={{ flexDirection: 'row', gap: 10 }}>
                                         <TouchableOpacity 
                                             onPress={() => { setEditingBankId(bank._id); setEditBankName(bank.name); setEditBankAmount(bank.amount.toString()); }}
-                                            style={{ backgroundColor: '#EEEDFF', width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center' }}
+                                            style={{ backgroundColor: colors.primaryLight, width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center' }}
                                         >
-                                            <Ionicons name="create-outline" size={18} color="#4F46E5" />
+                                            <Ionicons name="create-outline" size={18} color={colors.primary} />
                                         </TouchableOpacity>
                                         <TouchableOpacity 
                                             onPress={() => handleDeleteBank(bank._id)}
-                                            style={{ backgroundColor: '#FFF0F0', width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center' }}
+                                            style={{ backgroundColor: isDark ? 'rgba(255, 71, 87, 0.2)' : '#FFF0F0', width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center' }}
                                         >
                                             <Ionicons name="trash-outline" size={18} color="#FF4757" />
                                         </TouchableOpacity>
@@ -285,15 +454,21 @@ const ProfileScreen = ({ navigation }) => {
                             )}
                         </View>
                     ))
-                ) : null}
+                ) : (
+                    <View style={{ alignItems: 'center', paddingVertical: 14 }}>
+                        <Ionicons name="business-outline" size={28} color={colors.textSecondary} style={{ marginBottom: 4 }} />
+                        <Text style={{ fontSize: 13, color: colors.textSecondary, fontWeight: '600' }}>No banks linked yet</Text>
+                        <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 2 }}>Tap '+' above to add your first bank account</Text>
+                    </View>
+                )}
                 
                 {showAddBank && (
-                    <View style={{ marginTop: 15, paddingTop: 15, borderTopWidth: 1, borderTopColor: '#F1F5F9' }}>
-                        <View style={styles.passwordContainer}>
-                            <TextInput style={styles.passwordInput} placeholder="Bank Name" placeholderTextColor="#94A3B8" value={newBankName} onChangeText={setNewBankName} />
+                    <View style={{ marginTop: 15, paddingTop: 15, borderTopWidth: 1, borderTopColor: colors.border }}>
+                        <View style={[styles.passwordContainer, { backgroundColor: colors.inputBg, borderColor: colors.border }]}>
+                            <TextInput style={[styles.passwordInput, { color: colors.text }]} placeholder="Bank Name" placeholderTextColor={colors.textMuted} value={newBankName} onChangeText={setNewBankName} />
                         </View>
-                        <View style={styles.passwordContainer}>
-                            <TextInput style={styles.passwordInput} placeholder="Initial Amount" placeholderTextColor="#94A3B8" value={newBankAmount} onChangeText={setNewBankAmount} keyboardType="numeric" />
+                        <View style={[styles.passwordContainer, { backgroundColor: colors.inputBg, borderColor: colors.border }]}>
+                            <TextInput style={[styles.passwordInput, { color: colors.text }]} placeholder="Initial Amount" placeholderTextColor={colors.textMuted} value={newBankAmount} onChangeText={setNewBankAmount} keyboardType="numeric" />
                         </View>
                         <TouchableOpacity style={[styles.primaryBtn, isAddingBank && { opacity: 0.7 }]} onPress={handleAddBank} disabled={isAddingBank}>
                             {isAddingBank ? <ActivityIndicator size="small" color="#FFFFFF" /> : (
@@ -307,8 +482,75 @@ const ProfileScreen = ({ navigation }) => {
                 )}
             </View>
 
+            {/* Category Pie Chart & Breakdown Section under Bank */}
+            {categoryStats.length > 0 && (
+                <View style={[styles.sectionCard, { backgroundColor: colors.card, borderColor: colors.cardBorder, borderWidth: isDark ? 1 : 0 }]}>
+                    <View style={styles.sectionHeader}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                            <View style={[styles.sectionIconBox, { backgroundColor: colors.primaryLight }]}>
+                                <Ionicons name="pie-chart" size={20} color={colors.primary} />
+                            </View>
+                            <View style={styles.sectionTitles}>
+                                <Text style={[styles.sectionTitle, { color: colors.text }]}>Category Spending</Text>
+                                <Text style={[styles.sectionSubtitle, { color: colors.textSecondary }]}>Monthly breakdown & distribution</Text>
+                            </View>
+                        </View>
+                        <View style={[styles.catCountBadge, { backgroundColor: colors.primaryLight }]}>
+                            <Text style={[styles.catCountText, { color: colors.primary }]}>{categoryStats.length} {categoryStats.length === 1 ? 'Category' : 'Categories'}</Text>
+                        </View>
+                    </View>
 
+                    {/* Donut Chart and Top Legend */}
+                    <View style={[styles.pieRow, { borderBottomColor: isDark ? colors.border : '#F8FAFC' }]}>
+                        <CategoryPieChart data={categoryStats} total={monthlyTotal} colors={colors} isDark={isDark} />
+                        
+                        <View style={styles.legendContainer}>
+                            {categoryStats.slice(0, 3).map((item, idx) => {
+                                const percent = monthlyTotal > 0 ? ((item.amount / monthlyTotal) * 100).toFixed(0) : 0;
+                                return (
+                                    <View key={idx} style={styles.legendItem}>
+                                        <View style={[styles.legendDot, { backgroundColor: item.color }]} />
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={[styles.legendName, { color: colors.text }]} numberOfLines={1}>{item.category}</Text>
+                                            <Text style={[styles.legendAmount, { color: colors.textSecondary }]}>₹{item.amount.toFixed(0)} ({percent}%)</Text>
+                                        </View>
+                                    </View>
+                                );
+                            })}
+                        </View>
+                    </View>
+
+                    {/* All Categories Breakdown Progress */}
+                    <View style={styles.breakdownList}>
+                        {categoryStats.map((item, index) => {
+                            const percent = monthlyTotal > 0 ? Math.round((item.amount / monthlyTotal) * 100) : 0;
+                            const iconMeta = getCategoryIcon(item.category);
+                            return (
+                                <View key={index} style={styles.catBreakdownItem}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                            <View style={[styles.miniIconBox, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : iconMeta.bg }]}>
+                                                <Ionicons name={iconMeta.name} size={13} color={iconMeta.color} />
+                                            </View>
+                                            <Text style={[styles.catName, { color: colors.text }]}>{item.category}</Text>
+                                            <Text style={[styles.catCountSmall, { color: colors.textSecondary }]}> • {item.count} {item.count === 1 ? 'tx' : 'txs'}</Text>
+                                        </View>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                            <Text style={[styles.catAmountText, { color: colors.text }]}>₹{item.amount.toFixed(2)}</Text>
+                                            <Text style={[styles.catPercentBadge, { color: colors.textSecondary }]}> {percent}%</Text>
+                                        </View>
+                                    </View>
+                                    <View style={[styles.progressBarBackground, { backgroundColor: isDark ? '#233047' : '#F1F5F9' }]}>
+                                        <View style={[styles.progressBarFill, { width: `${Math.min(percent, 100)}%`, backgroundColor: item.color }]} />
+                                    </View>
+                                </View>
+                            );
+                        })}
+                    </View>
+                </View>
+            )}
         </KeyboardAwareScrollView>
+        </View>
     );
 };
 
@@ -316,7 +558,7 @@ const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F9F9FB', paddingHorizontal: 20 },
     
     headerTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', marginBottom: 20 },
-    headerTitleText: { fontSize: 18, fontWeight: '800', color: '#1E293B' },
+    headerTitleText: { fontSize: 22, fontWeight: '800', color: '#1E293B' },
     
     // Profile Card
     profileCard: { 
@@ -343,6 +585,37 @@ const styles = StyleSheet.create({
     sectionTitle: { fontSize: 16, fontWeight: '800', color: '#1E293B' },
     sectionSubtitle: { fontSize: 12, color: '#94A3B8', fontWeight: '500', marginTop: 2 },
     
+    // Theme Switcher Pills
+    themePillsRow: {
+        flexDirection: 'row',
+        padding: 4,
+        borderRadius: 14,
+        gap: 6,
+    },
+    themePillBtn: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 6,
+        paddingVertical: 10,
+        borderRadius: 10,
+    },
+    themePillBtnActive: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.08,
+        shadowRadius: 4,
+        elevation: 2,
+    },
+    themePillText: {
+        fontSize: 13,
+    },
+    themeHintText: {
+        fontSize: 11,
+        fontWeight: '500',
+    },
+    
     // Inputs & Buttons
     passwordContainer: { 
         flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8FAFC', borderRadius: 16, 
@@ -364,7 +637,130 @@ const styles = StyleSheet.create({
     // Banks & List items
     bankItem: { marginBottom: 15, paddingBottom: 15, borderBottomWidth: 1, borderBottomColor: '#F8FAFC' },
     iconCircle: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' },
-    
+
+    // Category Pie & Breakdown
+    catCountBadge: { backgroundColor: '#F1F5F9', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
+    catCountText: { fontSize: 11, fontWeight: '700', color: '#475569' },
+    pieRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-around',
+        paddingVertical: 10,
+        borderBottomWidth: 1,
+        borderBottomColor: '#F8FAFC',
+        marginBottom: 14
+    },
+    chartWrapper: {
+        position: 'relative',
+        width: 120,
+        height: 120,
+        justifyContent: 'center',
+        alignItems: 'center'
+    },
+    ringOuter: {
+        width: 110,
+        height: 110,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    ringInner: {
+        position: 'absolute',
+        width: 66,
+        height: 66,
+        borderRadius: 33,
+        backgroundColor: '#FFFFFF',
+        justifyContent: 'center',
+        alignItems: 'center',
+        shadowColor: '#0F172A',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.08,
+        shadowRadius: 4,
+        elevation: 2,
+    },
+    chartCenterSubtitle: {
+        fontSize: 9,
+        fontWeight: '700',
+        color: '#94A3B8',
+        textTransform: 'uppercase'
+    },
+    chartCenterValue: {
+        fontSize: 12,
+        fontWeight: '900',
+        color: '#1E293B'
+    },
+    legendContainer: {
+        flex: 1,
+        paddingLeft: 16,
+        justifyContent: 'center',
+        gap: 10
+    },
+    legendItem: {
+        flexDirection: 'row',
+        alignItems: 'center'
+    },
+    legendDot: {
+        width: 10,
+        height: 10,
+        borderRadius: 5,
+        marginRight: 8
+    },
+    legendName: {
+        fontSize: 13,
+        fontWeight: '700',
+        color: '#1E293B'
+    },
+    legendAmount: {
+        fontSize: 11,
+        color: '#64748B',
+        fontWeight: '600',
+        marginTop: 1
+    },
+    breakdownList: {
+        marginTop: 6,
+        gap: 12
+    },
+    catBreakdownItem: {
+        width: '100%'
+    },
+    miniIconBox: {
+        width: 22,
+        height: 22,
+        borderRadius: 11,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 8
+    },
+    catName: {
+        fontSize: 13,
+        fontWeight: '700',
+        color: '#1E293B'
+    },
+    catCountSmall: {
+        fontSize: 11,
+        color: '#94A3B8',
+        fontWeight: '500'
+    },
+    catAmountText: {
+        fontSize: 13,
+        fontWeight: '800',
+        color: '#1E293B'
+    },
+    catPercentBadge: {
+        fontSize: 11,
+        fontWeight: '700',
+        color: '#64748B'
+    },
+    progressBarBackground: {
+        height: 6,
+        borderRadius: 3,
+        backgroundColor: '#F1F5F9',
+        overflow: 'hidden',
+        width: '100%'
+    },
+    progressBarFill: {
+        height: '100%',
+        borderRadius: 3
+    }
 });
 
 export default ProfileScreen;

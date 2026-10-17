@@ -7,14 +7,19 @@ const router = express.Router();
 
 // Create an expense
 router.post('/', verifyToken, async (req, res) => {
-    const newExpense = new Expense({ ...req.body, userId: req.user.id });
     try {
-        if (req.body.bankId) {
+        const expenseBody = { ...req.body, userId: req.user.id };
+        if (!expenseBody.bankId || expenseBody.bankId === 'null' || expenseBody.bankId === 'undefined') {
+            delete expenseBody.bankId;
+        }
+
+        const newExpense = new Expense(expenseBody);
+        if (expenseBody.bankId) {
             const user = await User.findById(req.user.id);
             if (user) {
-                const bank = user.banks.id(req.body.bankId);
+                const bank = user.banks.id(expenseBody.bankId);
                 if (bank) {
-                    bank.amount -= req.body.amount;
+                    bank.amount -= expenseBody.amount;
                     await user.save();
                 }
             }
@@ -22,6 +27,7 @@ router.post('/', verifyToken, async (req, res) => {
         const savedExpense = await newExpense.save();
         res.status(201).json(savedExpense);
     } catch (err) {
+        console.error('Error creating expense:', err);
         res.status(500).json(err);
     }
 });
@@ -40,8 +46,10 @@ router.get('/', verifyToken, async (req, res) => {
 router.get('/monthly', verifyToken, async (req, res) => {
     try {
         const date = new Date();
-        const firstDay = new Date(date.getFullYear(), date.getMonth(), 1);
-        const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+        const year = date.getFullYear();
+        const month = date.getMonth();
+        const firstDay = new Date(Date.UTC(year, month, 1, 0, 0, 0, 0));
+        const lastDay = new Date(Date.UTC(year, month + 1, 0, 23, 59, 59, 999));
 
         const expenses = await Expense.find({
             userId: req.user.id,
@@ -62,8 +70,8 @@ router.get('/filter/:year/:month', verifyToken, async (req, res) => {
         // month param is 1-12
         const month = parseInt(req.params.month) - 1; 
         
-        const firstDay = new Date(year, month, 1);
-        const lastDay = new Date(year, month + 1, 0);
+        const firstDay = new Date(Date.UTC(year, month, 1, 0, 0, 0, 0));
+        const lastDay = new Date(Date.UTC(year, month + 1, 0, 23, 59, 59, 999));
 
         const expenses = await Expense.find({
             userId: req.user.id,
@@ -108,13 +116,19 @@ router.put('/:id', verifyToken, async (req, res) => {
             await user.save();
         }
 
+        const updateData = { ...req.body };
+        if (updateData.bankId === null || updateData.bankId === 'null' || updateData.bankId === '' || updateData.bankId === 'undefined') {
+            updateData.bankId = null;
+        }
+
         const updatedExpense = await Expense.findByIdAndUpdate(
             req.params.id,
-            { $set: req.body },
+            { $set: updateData },
             { new: true }
         );
         res.status(200).json(updatedExpense);
     } catch (err) {
+        console.error('Error updating expense:', err);
         res.status(500).json(err);
     }
 });

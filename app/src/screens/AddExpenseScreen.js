@@ -10,6 +10,7 @@ import { Calendar } from 'react-native-calendars';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTheme } from '../context/ThemeContext';
 
 import { API_BASE_URL } from '../config';
 
@@ -41,6 +42,7 @@ const getCategoryColor = (category) => {
 };
 
 const AddExpenseScreen = ({ navigation, route }) => {
+    const { colors, isDark } = useTheme();
     const expenseToEdit = route.params?.expense;
     const prefilledTitle = route.params?.prefilledTitle;
     
@@ -67,34 +69,44 @@ const AddExpenseScreen = ({ navigation, route }) => {
             const fetchProfile = async () => {
                 try {
                     const token = await AsyncStorage.getItem('token');
-                    if (token) {
-                        const netState = await NetInfo.fetch();
-                        let userData = null;
+                    if (!token) return;
 
-                        if (netState.isConnected) {
-                            const res = await axios.get(`${AUTH_URL}/me`, { headers: { Authorization: `Bearer ${token}` } });
-                            userData = res.data;
-                            await AsyncStorage.setItem('cached_user', JSON.stringify(userData));
-                        } else {
-                            const cachedUser = await AsyncStorage.getItem('cached_user');
-                            if (cachedUser) {
-                                userData = JSON.parse(cachedUser);
+                    // Immediately populate from cache so bank dropdown appears instantly
+                    const cachedUser = await AsyncStorage.getItem('cached_user');
+                    if (cachedUser) {
+                        const parsedUser = JSON.parse(cachedUser);
+                        if (parsedUser && Array.isArray(parsedUser.banks) && parsedUser.banks.length > 0) {
+                            setBanks(parsedUser.banks);
+                            if (parsedUser.banks.length === 1 && !expenseToEdit) {
+                                setSelectedBankId(parsedUser.banks[0]._id);
                             }
                         }
+                    }
 
-                        if (userData && userData.banks) {
+                    // Fresh fetch when online
+                    const netState = await NetInfo.fetch();
+                    if (netState.isConnected) {
+                        const res = await axios.get(`${AUTH_URL}/me`, { headers: { Authorization: `Bearer ${token}` } });
+                        const userData = res.data;
+                        if (userData && Array.isArray(userData.banks)) {
                             setBanks(userData.banks);
                             if (userData.banks.length === 1 && !expenseToEdit) {
                                 setSelectedBankId(userData.banks[0]._id);
                             }
+                            await AsyncStorage.setItem('cached_user', JSON.stringify(userData));
                         }
                     }
                 } catch (error) {
-                    console.error(error);
+                    console.error('Failed to fetch profile/banks in AddExpense:', error);
+                    // If token expired/invalid, clear it and redirect to login
+                    if (error?.response?.status === 401 || error?.response?.status === 403) {
+                        await AsyncStorage.removeItem('token');
+                        navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
+                    }
                 }
             };
             fetchProfile();
-        }, [expenseToEdit])
+        }, [expenseToEdit, navigation])
     );
 
     const handleSave = async () => {
@@ -144,18 +156,32 @@ const AddExpenseScreen = ({ navigation, route }) => {
 
             const netState = await NetInfo.fetch();
             if (netState.isConnected) {
-                // Fire and forget network requests
+                // Fire network request, but if connection dropped in between, enqueue it
                 if (expenseToEdit) {
                     axios.put(`${API_URL}/${expenseToEdit._id}`, expenseData, {
                         headers: { Authorization: `Bearer ${token}` }
-                    }).then(() => SyncService.processQueue()).catch(console.error);
+                    }).then(() => SyncService.processQueue()).catch(async (err) => {
+                        console.error('Failed to update online, adding to offline queue:', err);
+                        await SyncService.addToQueue({
+                            type: 'EDIT_EXPENSE',
+                            expenseId: expenseToEdit._id,
+                            data: expenseData
+                        });
+                    });
                 } else {
                     axios.post(API_URL, expenseData, {
                         headers: { Authorization: `Bearer ${token}` }
-                    }).then(() => SyncService.processQueue()).catch(console.error);
+                    }).then(() => SyncService.processQueue()).catch(async (err) => {
+                        console.error('Failed to post online, adding to offline queue:', err);
+                        await SyncService.addToQueue({
+                            type: 'ADD_EXPENSE',
+                            localId: cacheExpenseData._id,
+                            data: expenseData
+                        });
+                    });
                 }
             } else {
-                // Only queue for sync if we are OFFLINE
+                // Queue for sync when OFFLINE
                 await SyncService.addToQueue({
                     type: expenseToEdit ? 'EDIT_EXPENSE' : 'ADD_EXPENSE',
                     expenseId: expenseToEdit ? expenseToEdit._id : undefined,
@@ -165,6 +191,7 @@ const AddExpenseScreen = ({ navigation, route }) => {
             }
             
             DeviceEventEmitter.emit('expenseUpdated', cacheExpenseData);
+            DeviceEventEmitter.emit('bankUpdated');
             
             if (navigation.canGoBack()) {
                 navigation.goBack();
@@ -178,7 +205,7 @@ const AddExpenseScreen = ({ navigation, route }) => {
 
     return (
         <KeyboardAwareScrollView 
-            style={styles.container} 
+            style={[styles.container, { backgroundColor: colors.background }]} 
             contentContainerStyle={{ paddingBottom: 50, paddingTop: Math.max(insets.top + 10, 20) }} 
             keyboardShouldPersistTaps="handled"
             enableOnAndroid={true}
@@ -188,55 +215,55 @@ const AddExpenseScreen = ({ navigation, route }) => {
             {/* Custom Header */}
             <View style={styles.headerTitleRow}>
                 <TouchableOpacity onPress={() => navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Home')} style={{ padding: 5, marginRight: 10 }}>
-                    <Ionicons name="chevron-back" size={24} color="#1E293B" />
+                    <Ionicons name="chevron-back" size={24} color={colors.text} />
                 </TouchableOpacity>
-                <Text style={styles.headerTitleText}>{expenseToEdit ? 'Edit Expense' : 'Add Expense'}</Text>
+                <Text style={[styles.headerTitleText, { color: colors.text }]}>{expenseToEdit ? 'Edit Expense' : 'Add Expense'}</Text>
             </View>
 
-            <View style={styles.sectionCard}>
+            <View style={[styles.sectionCard, { backgroundColor: colors.card, borderColor: colors.cardBorder, borderWidth: isDark ? 1 : 0 }]}>
                 <View style={styles.sectionHeader}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-                        <View style={styles.sectionIconBox}>
-                            <Ionicons name="receipt" size={20} color="#4F46E5" />
+                        <View style={[styles.sectionIconBox, { backgroundColor: colors.primaryLight }]}>
+                            <Ionicons name="receipt" size={20} color={colors.primary} />
                         </View>
                         <View style={styles.sectionTitles}>
-                            <Text style={styles.sectionTitle}>Expense Details</Text>
-                            <Text style={styles.sectionSubtitle}>Enter transaction info</Text>
+                            <Text style={[styles.sectionTitle, { color: colors.text }]}>Expense Details</Text>
+                            <Text style={[styles.sectionSubtitle, { color: colors.textSecondary }]}>Enter transaction info</Text>
                         </View>
                     </View>
                     
                     <TouchableOpacity 
-                        style={styles.headerDatePicker} 
+                        style={[styles.headerDatePicker, { backgroundColor: colors.primaryLight }]} 
                         onPress={() => setShowDatePicker(true)}
                     >
-                        <Ionicons name="calendar-outline" size={14} color="#4F46E5" />
-                        <Text style={styles.headerDateText}>
+                        <Ionicons name="calendar-outline" size={14} color={colors.primary} />
+                        <Text style={[styles.headerDateText, { color: colors.primary }]}>
                             {date.toLocaleDateString('default', { day: 'numeric', month: 'short', year: '2-digit' })}
                         </Text>
                     </TouchableOpacity>
                 </View>
 
                 {/* Title */}
-                <Text style={styles.label}>Title</Text>
-                <View style={styles.inputContainer}>
-                    <Ionicons name="pricetag-outline" size={18} color="#94A3B8" style={styles.inputLeftIcon} />
+                <Text style={[styles.label, { color: colors.text }]}>Title</Text>
+                <View style={[styles.inputContainer, { backgroundColor: colors.inputBg, borderColor: colors.border }]}>
+                    <Ionicons name="pricetag-outline" size={18} color={colors.textSecondary} style={styles.inputLeftIcon} />
                     <TextInput 
-                        style={styles.input} 
+                        style={[styles.input, { color: colors.text }]} 
                         placeholder="e.g. Starbucks, Rent" 
-                        placeholderTextColor="#94A3B8"
+                        placeholderTextColor={colors.textMuted}
                         value={title}
                         onChangeText={setTitle}
                     />
                 </View>
                 
                 {/* Amount */}
-                <Text style={styles.label}>Amount (₹)</Text>
-                <View style={styles.inputContainer}>
-                    <Ionicons name="wallet-outline" size={18} color="#94A3B8" style={styles.inputLeftIcon} />
+                <Text style={[styles.label, { color: colors.text }]}>Amount (₹)</Text>
+                <View style={[styles.inputContainer, { backgroundColor: colors.inputBg, borderColor: colors.border }]}>
+                    <Ionicons name="wallet-outline" size={18} color={colors.textSecondary} style={styles.inputLeftIcon} />
                     <TextInput 
-                        style={styles.input} 
+                        style={[styles.input, { color: colors.text }]} 
                         placeholder="0.00" 
-                        placeholderTextColor="#94A3B8"
+                        placeholderTextColor={colors.textMuted}
                         value={amount}
                         onChangeText={setAmount}
                         keyboardType="numeric"
@@ -251,7 +278,7 @@ const AddExpenseScreen = ({ navigation, route }) => {
                         onRequestClose={() => setShowDatePicker(false)}
                     >
                         <View style={styles.modalOverlay}>
-                            <View style={styles.calendarContainer}>
+                            <View style={[styles.calendarContainer, { backgroundColor: colors.card }]}>
                                 <Calendar
                                     current={date.toISOString()}
                                     onDayPress={(day) => {
@@ -261,26 +288,26 @@ const AddExpenseScreen = ({ navigation, route }) => {
                                     markedDates={{
                                         [date.toISOString().split('T')[0]]: {
                                             selected: true,
-                                            selectedColor: '#4F46E5',
+                                            selectedColor: colors.primary,
                                             selectedTextColor: '#ffffff'
                                         }
                                     }}
                                     theme={{
-                                        backgroundColor: '#ffffff',
-                                        calendarBackground: '#ffffff',
-                                        textSectionTitleColor: '#94A3B8',
-                                        selectedDayBackgroundColor: '#4F46E5',
+                                        backgroundColor: colors.card,
+                                        calendarBackground: colors.card,
+                                        textSectionTitleColor: colors.textSecondary,
+                                        selectedDayBackgroundColor: colors.primary,
                                         selectedDayTextColor: '#ffffff',
-                                        todayTextColor: '#4F46E5',
-                                        dayTextColor: '#1E293B',
-                                        textDisabledColor: '#CBD5E1',
-                                        arrowColor: '#4F46E5',
-                                        monthTextColor: '#1E293B',
+                                        todayTextColor: colors.primary,
+                                        dayTextColor: colors.text,
+                                        textDisabledColor: colors.textMuted,
+                                        arrowColor: colors.primary,
+                                        monthTextColor: colors.text,
                                         textMonthFontWeight: '800',
                                     }}
                                 />
-                                <TouchableOpacity style={styles.closeCalendarBtn} onPress={() => setShowDatePicker(false)}>
-                                    <Text style={styles.closeCalendarText}>Cancel</Text>
+                                <TouchableOpacity style={[styles.closeCalendarBtn, { backgroundColor: colors.inputBg }]} onPress={() => setShowDatePicker(false)}>
+                                    <Text style={[styles.closeCalendarText, { color: colors.textSecondary }]}>Cancel</Text>
                                 </TouchableOpacity>
                             </View>
                         </View>
@@ -289,21 +316,21 @@ const AddExpenseScreen = ({ navigation, route }) => {
 
                 {/* Category */}
                 <View style={{ zIndex: 20, marginBottom: showCategoryDropdown ? 10 : 0 }}>
-                    <Text style={styles.label}>Category</Text>
-                    <TouchableOpacity style={[styles.datePickerButton, { marginBottom: showCategoryDropdown ? 10 : 20 }]} onPress={() => { setShowCategoryDropdown(!showCategoryDropdown); setShowDropdown(false); }}>
+                    <Text style={[styles.label, { color: colors.text }]}>Category</Text>
+                    <TouchableOpacity style={[styles.datePickerButton, { backgroundColor: colors.inputBg, borderColor: colors.border, marginBottom: showCategoryDropdown ? 10 : 20 }]} onPress={() => { setShowCategoryDropdown(!showCategoryDropdown); setShowDropdown(false); }}>
                             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                                 <Ionicons name={getCategoryIcon(category)} size={18} color={getCategoryColor(category)} style={styles.inputLeftIcon} />
-                                <Text style={styles.datePickerText}>{category}</Text>
+                                <Text style={[styles.datePickerText, { color: colors.text }]}>{category}</Text>
                             </View>
-                            <Ionicons name={showCategoryDropdown ? "chevron-up" : "chevron-down"} size={18} color="#CBD5E1" style={{ marginRight: 15 }} />
+                            <Ionicons name={showCategoryDropdown ? "chevron-up" : "chevron-down"} size={18} color={colors.textSecondary} style={{ marginRight: 15 }} />
                         </TouchableOpacity>
                         {showCategoryDropdown && (
-                            <View style={styles.dropdownMenu}>
+                            <View style={[styles.dropdownMenu, { backgroundColor: colors.card, borderColor: colors.border }]}>
                                 <ScrollView nestedScrollEnabled={true}>
                                     {CATEGORIES.map(cat => (
                                         <TouchableOpacity 
                                             key={cat} 
-                                            style={styles.dropdownItem}
+                                            style={[styles.dropdownItem, { borderBottomColor: colors.border }]}
                                             onPress={() => {
                                                 setCategory(cat);
                                                 setShowCategoryDropdown(false);
@@ -311,7 +338,7 @@ const AddExpenseScreen = ({ navigation, route }) => {
                                         >
                                             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                                                 <Ionicons name={getCategoryIcon(cat)} size={18} color={getCategoryColor(cat)} style={{ marginRight: 10 }} />
-                                                <Text style={[styles.dropdownItemText, category === cat && { fontWeight: '700', color: '#4F46E5' }]}>{cat}</Text>
+                                                <Text style={[styles.dropdownItemText, { color: colors.text }, category === cat && { fontWeight: '700', color: colors.primary }]}>{cat}</Text>
                                             </View>
                                         </TouchableOpacity>
                                     ))}
@@ -323,36 +350,36 @@ const AddExpenseScreen = ({ navigation, route }) => {
                 {/* Bank */}
                 {banks.length > 0 && (
                     <View style={{ zIndex: 10 }}>
-                        <Text style={styles.label}>Paid From Bank</Text>
+                        <Text style={[styles.label, { color: colors.text }]}>Paid From Bank</Text>
                         {banks.length === 1 ? (
-                            <View style={styles.inputContainer}>
-                                <Ionicons name="business-outline" size={18} color="#94A3B8" style={styles.inputLeftIcon} />
-                                <Text style={styles.staticInputText}>{banks[0].name}</Text>
+                            <View style={[styles.inputContainer, { backgroundColor: colors.inputBg, borderColor: colors.border }]}>
+                                <Ionicons name="business-outline" size={18} color={colors.textSecondary} style={styles.inputLeftIcon} />
+                                <Text style={[styles.staticInputText, { color: colors.text }]}>{banks[0].name}</Text>
                             </View>
                         ) : (
                             <View>
-                                <TouchableOpacity style={[styles.datePickerButton, { marginBottom: showDropdown ? 10 : 20 }]} onPress={() => { setShowDropdown(!showDropdown); setShowCategoryDropdown(false); }}>
+                                <TouchableOpacity style={[styles.datePickerButton, { backgroundColor: colors.inputBg, borderColor: colors.border, marginBottom: showDropdown ? 10 : 20 }]} onPress={() => { setShowDropdown(!showDropdown); setShowCategoryDropdown(false); }}>
                                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                        <Ionicons name="business-outline" size={18} color="#94A3B8" style={styles.inputLeftIcon} />
-                                        <Text style={[styles.datePickerText, !selectedBankId && { color: '#94A3B8' }]}>
+                                        <Ionicons name="business-outline" size={18} color={colors.textSecondary} style={styles.inputLeftIcon} />
+                                        <Text style={[styles.datePickerText, { color: selectedBankId ? colors.text : colors.textMuted }]}>
                                             {selectedBankId ? banks.find(b => b._id === selectedBankId)?.name : 'Select a bank...'}
                                         </Text>
                                     </View>
-                                    <Ionicons name={showDropdown ? "chevron-up" : "chevron-down"} size={18} color="#CBD5E1" style={{ marginRight: 15 }} />
+                                    <Ionicons name={showDropdown ? "chevron-up" : "chevron-down"} size={18} color={colors.textSecondary} style={{ marginRight: 15 }} />
                                 </TouchableOpacity>
                                 {showDropdown && (
-                                    <View style={styles.dropdownMenu}>
+                                    <View style={[styles.dropdownMenu, { backgroundColor: colors.card, borderColor: colors.border }]}>
                                         <ScrollView nestedScrollEnabled={true}>
                                             {banks.map(bank => (
                                                 <TouchableOpacity 
                                                     key={bank._id} 
-                                                    style={styles.dropdownItem}
+                                                    style={[styles.dropdownItem, { borderBottomColor: colors.border }]}
                                                     onPress={() => {
                                                         setSelectedBankId(bank._id);
                                                         setShowDropdown(false);
                                                     }}
                                                 >
-                                                    <Text style={[styles.dropdownItemText, selectedBankId === bank._id && { fontWeight: '700', color: '#4F46E5' }]}>{bank.name}</Text>
+                                                    <Text style={[styles.dropdownItemText, { color: colors.text }, selectedBankId === bank._id && { fontWeight: '700', color: colors.primary }]}>{bank.name}</Text>
                                                 </TouchableOpacity>
                                             ))}
                                         </ScrollView>
