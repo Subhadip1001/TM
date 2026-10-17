@@ -39,9 +39,6 @@ function MainTabs({ navigation, route }) {
   const scrollRef = useRef(null);
   const scrollX = useRef(new Animated.Value(0)).current;
   const currentScrollX = useRef(0);
-  const scrollAnimValue = useRef(new Animated.Value(0)).current;
-  const activeAnimListener = useRef(null);
-  const isProgrammaticScroll = useRef(false);
   const listenersRef = useRef({
     Home: new Set(),
     PdfExport: new Set(),
@@ -62,53 +59,34 @@ function MainTabs({ navigation, route }) {
     }
   };
 
-  const goToTab = (index, animated = true) => {
+  // WhatsApp-style tab navigation: Instant screen switch on bottom bar tap
+  const goToTab = (index) => {
     if (index < 0 || index >= TAB_ROUTES.length) return;
     setActiveIndex(index);
     notifyTabFocus(TAB_ROUTES[index].name);
     const targetX = index * width;
 
-    if (!animated) {
-      const node = scrollRef.current?.getNode ? scrollRef.current.getNode() : scrollRef.current;
-      node?.scrollTo({ x: targetX, animated: false });
-      return;
-    }
+    currentScrollX.current = targetX;
+    try {
+      scrollX.setValue(targetX);
+    } catch (e) {}
 
-    isProgrammaticScroll.current = true;
-    if (activeAnimListener.current) {
-      scrollAnimValue.removeListener(activeAnimListener.current);
-      activeAnimListener.current = null;
-    }
-    scrollAnimValue.stopAnimation();
-    scrollAnimValue.setValue(currentScrollX.current);
-
-    const listenerId = scrollAnimValue.addListener(({ value }) => {
-      const node = scrollRef.current?.getNode ? scrollRef.current.getNode() : scrollRef.current;
-      node?.scrollTo({ x: value, animated: false });
-    });
-    activeAnimListener.current = listenerId;
-
-    const distance = Math.abs(targetX - currentScrollX.current);
-    const screenDiff = width > 0 ? (distance / width) : 1;
-    // Consistent constant linear speed (650ms per screen)
-    const duration = Math.max(350, Math.round(screenDiff * 650));
-
-    // Linear uniform speed: same constant speed from start to finish
-    Animated.timing(scrollAnimValue, {
-      toValue: targetX,
-      duration,
-      easing: Easing.linear,
-      useNativeDriver: false,
-    }).start(() => {
-      if (activeAnimListener.current) {
-        scrollAnimValue.removeListener(activeAnimListener.current);
-        activeAnimListener.current = null;
-      }
-      isProgrammaticScroll.current = false;
-      const node = scrollRef.current?.getNode ? scrollRef.current.getNode() : scrollRef.current;
-      node?.scrollTo({ x: targetX, animated: false });
-    });
+    const node = scrollRef.current?.getNode ? scrollRef.current.getNode() : scrollRef.current;
+    node?.scrollTo({ x: targetX, animated: false });
   };
+
+  // Keep scroll position aligned on dimension/orientation changes
+  useEffect(() => {
+    if (width > 0) {
+      const targetX = activeIndex * width;
+      currentScrollX.current = targetX;
+      try {
+        scrollX.setValue(targetX);
+      } catch (e) {}
+      const node = scrollRef.current?.getNode ? scrollRef.current.getNode() : scrollRef.current;
+      node?.scrollTo({ x: targetX, animated: false });
+    }
+  }, [width]);
 
   // Sync if navigated via route.params?.screen (e.g. from notification or deep link)
   useEffect(() => {
@@ -132,7 +110,6 @@ function MainTabs({ navigation, route }) {
   };
 
   const handleMomentumScrollEnd = (event) => {
-    isProgrammaticScroll.current = false;
     updateActiveTabFromOffset(event.nativeEvent.contentOffset.x);
   };
 
@@ -184,14 +161,11 @@ function MainTabs({ navigation, route }) {
       <Animated.ScrollView
         ref={scrollRef}
         horizontal
-        pagingEnabled
+        pagingEnabled={true}
         showsHorizontalScrollIndicator={false}
         bounces={false}
         directionalLockEnabled={true}
         decelerationRate="normal"
-        snapToInterval={width}
-        snapToAlignment="start"
-        disableIntervalMomentum={true}
         scrollEventThrottle={16}
         onScroll={Animated.event(
           [{ nativeEvent: { contentOffset: { x: scrollX } } }],

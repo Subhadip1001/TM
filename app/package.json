@@ -56,7 +56,11 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "build:apk": "cd android && gradlew assembleRelease",
+    "build:apk:debug": "cd android && gradlew assembleDebug",
+    "build:apk:universal": "cd android && gradlew assembleRelease -PreactNativeSeparateBuildPerCPUArchitecture=false",
+    "build:bundle": "cd android && gradlew bundleRelease"
   },
   "private": true
 }

@@ -206,10 +206,12 @@ const AddExpenseScreen = ({ navigation, route }) => {
     return (
         <KeyboardAwareScrollView 
             style={[styles.container, { backgroundColor: colors.background }]} 
-            contentContainerStyle={{ paddingBottom: 50, paddingTop: Math.max(insets.top + 10, 20) }} 
+            contentContainerStyle={{ paddingBottom: 120, paddingTop: Math.max(insets.top + 10, 20) }} 
             keyboardShouldPersistTaps="handled"
             enableOnAndroid={true}
-            extraScrollHeight={20}
+            extraScrollHeight={Platform.OS === 'ios' ? 80 : 120}
+            extraHeight={120}
+            enableAutomaticScroll={true}
             showsVerticalScrollIndicator={false}
         >
             {/* Custom Header */}

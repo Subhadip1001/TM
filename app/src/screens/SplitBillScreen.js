@@ -5,11 +5,11 @@ import {
     StyleSheet,
     TextInput,
     TouchableOpacity,
-    ScrollView,
     Alert,
     Share,
     Platform
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -83,9 +83,14 @@ export default function SplitBillScreen({ navigation }) {
 
     return (
         <View style={[styles.container, { backgroundColor: colors.background }]}>
-            <ScrollView
-                contentContainerStyle={{ paddingBottom: 24, paddingTop: Math.max(insets.top + 10, 20) }}
+            <KeyboardAwareScrollView
+                contentContainerStyle={{ paddingBottom: 120, paddingTop: Math.max(insets.top + 10, 20) }}
                 showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                enableOnAndroid={true}
+                extraScrollHeight={Platform.OS === 'ios' ? 80 : 120}
+                extraHeight={120}
+                enableAutomaticScroll={true}
             >
                 {/* Header */}
                 <View style={styles.headerRow}>
@@ -236,7 +241,7 @@ export default function SplitBillScreen({ navigation }) {
                     <Ionicons name="paper-plane-outline" size={18} color="#FFFFFF" />
                     <Text style={styles.shareMainBtnText}>Share Split with Friends</Text>
                 </TouchableOpacity>
-            </ScrollView>
+            </KeyboardAwareScrollView>
         </View>
     );
 }

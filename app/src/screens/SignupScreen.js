@@ -49,7 +49,9 @@ const SignupScreen = ({ navigation }) => {
             contentContainerStyle={styles.container} 
             keyboardShouldPersistTaps="handled"
             enableOnAndroid={true}
-            extraScrollHeight={20}
+            extraScrollHeight={Platform.OS === 'ios' ? 80 : 120}
+            extraHeight={120}
+            enableAutomaticScroll={true}
         >
             <View>
                 <View style={{ alignItems: 'center', marginBottom: 20 }}>

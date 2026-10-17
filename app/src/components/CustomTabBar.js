@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Platform, Animated, useWindowDimensions } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Platform, Animated, useWindowDimensions, Keyboard } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 
@@ -8,6 +8,24 @@ export default function CustomTabBar({ state, descriptors, navigation, insets, s
     const windowDimensions = useWindowDimensions();
     const width = propWidth || windowDimensions.width;
     const bottomInset = insets?.bottom || 0;
+    const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+
+    useEffect(() => {
+        const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+        const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+        const showSubscription = Keyboard.addListener(showEvent, () => {
+            setIsKeyboardVisible(true);
+        });
+        const hideSubscription = Keyboard.addListener(hideEvent, () => {
+            setIsKeyboardVisible(false);
+        });
+
+        return () => {
+            showSubscription.remove();
+            hideSubscription.remove();
+        };
+    }, []);
 
     const tabConfig = {
         Home: { label: 'Home', icon: 'home', iconOutline: 'home-outline' },
@@ -16,7 +34,7 @@ export default function CustomTabBar({ state, descriptors, navigation, insets, s
         Profile: { label: 'Profile', icon: 'person', iconOutline: 'person-outline' },
     };
 
-    if (!state || !state.routes || !Array.isArray(state.routes)) {
+    if (isKeyboardVisible || !state || !state.routes || !Array.isArray(state.routes)) {
         return null;
     }
 
