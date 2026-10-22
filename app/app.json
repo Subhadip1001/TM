@@ -33,7 +33,20 @@
       "output": "single"
     },
     "plugins": [
-      "expo-share-intent",
+      [
+        "expo-share-intent",
+        {
+          "iosActivationRules": {
+            "NSExtensionActivationSupportsImageWithMaxCount": 1,
+            "NSExtensionActivationSupportsMovieWithMaxCount": 0,
+            "NSExtensionActivationSupportsText": true
+          },
+          "androidIntentFilters": ["text/*", "image/*"],
+          "androidMainActivityAttributes": {
+            "android:launchMode": "singleTask"
+          }
+        }
+      ],
       [
         "expo-splash-screen",
         {
@@ -42,7 +55,6 @@
           "imageWidth": 200
         }
       ],
-      "@react-native-community/datetimepicker",
       "expo-sharing"
     ],
     "experiments": {

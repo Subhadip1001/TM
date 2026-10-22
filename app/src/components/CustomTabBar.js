@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Platform, Animated, useWindowDimensions, Keyboard } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
+import { triggerHaptic } from '../utils/haptics';
 
 export default function CustomTabBar({ state, descriptors, navigation, insets, scrollX, tabBarWidth: propWidth }) {
     const { colors, isDark } = useTheme();
@@ -82,6 +83,7 @@ export default function CustomTabBar({ state, descriptors, navigation, insets, s
         const config = tabConfig[route.name] || { label: route.name, icon: 'ellipse', iconOutline: 'ellipse-outline' };
 
         const onPress = () => {
+            triggerHaptic('selection');
             const event = navigation.emit({
                 type: 'tabPress',
                 target: route.key,

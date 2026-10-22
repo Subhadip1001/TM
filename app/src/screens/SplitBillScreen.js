@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../context/ThemeContext';
+import { triggerHaptic } from '../utils/haptics';
 
 export default function SplitBillScreen({ navigation }) {
     const { colors, isDark } = useTheme();
@@ -56,6 +57,13 @@ export default function SplitBillScreen({ navigation }) {
     const perPersonEqual = people.length > 0 ? (grandTotal / people.length) : 0;
 
     const shareSplitSummary = async () => {
+        // Prevent sharing if total amount / each person owes amount is 0
+        const oweAmount = splitType === 'equal' ? perPersonEqual : (people.length > 0 ? grandTotal / people.length : 0);
+        if (oweAmount <= 0 || grandTotal <= 0) {
+            Alert.alert('Cannot Share', 'Please enter a valid bill amount before sharing the split.');
+            return;
+        }
+
         const title = billTitle.trim() || 'Split Bill';
         let message = `💰 *${title}*\nTotal Bill: ₹${grandTotal.toFixed(2)} (incl. ${numericTip}% tip)\n\n`;
 
@@ -83,8 +91,24 @@ export default function SplitBillScreen({ navigation }) {
 
     return (
         <View style={[styles.container, { backgroundColor: colors.background }]}>
+            {/* Fixed Header */}
+            <View style={[styles.headerRow, { paddingTop: Math.max(insets.top + 10, 20) }]}>
+                <Text style={[styles.headerTitle, { color: colors.text }]}>Split Bill</Text>
+                <TouchableOpacity 
+                    onPress={shareSplitSummary} 
+                    style={[
+                        styles.shareIconBtn, 
+                        { backgroundColor: colors.primaryLight, opacity: (splitType === 'equal' ? perPersonEqual : grandTotal) <= 0 ? 0.45 : 1 }
+                    ]}
+                    activeOpacity={0.7}
+                >
+                    <Ionicons name="share-social-outline" size={20} color={colors.primary} />
+                </TouchableOpacity>
+            </View>
+
+            {/* Scrollable Content */}
             <KeyboardAwareScrollView
-                contentContainerStyle={{ paddingBottom: 120, paddingTop: Math.max(insets.top + 10, 20) }}
+                contentContainerStyle={{ paddingBottom: 120, paddingTop: 4 }}
                 showsVerticalScrollIndicator={false}
                 keyboardShouldPersistTaps="handled"
                 enableOnAndroid={true}
@@ -92,14 +116,6 @@ export default function SplitBillScreen({ navigation }) {
                 extraHeight={120}
                 enableAutomaticScroll={true}
             >
-                {/* Header */}
-                <View style={styles.headerRow}>
-                    <Text style={[styles.headerTitle, { color: colors.text }]}>Split Bill</Text>
-                    <TouchableOpacity onPress={shareSplitSummary} style={[styles.shareIconBtn, { backgroundColor: colors.primaryLight }]}>
-                        <Ionicons name="share-social-outline" size={20} color={colors.primary} />
-                    </TouchableOpacity>
-                </View>
-
                 {/* Banner Summary */}
                 <LinearGradient colors={['#4F46E5', '#3730A3']} style={styles.bannerCard} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
                     <Text style={styles.bannerSubtitle}>Each person owes</Text>
@@ -173,7 +189,7 @@ export default function SplitBillScreen({ navigation }) {
                     <View style={[styles.splitToggleRow, { backgroundColor: isDark ? '#0B0F19' : '#F1F5F9' }]}>
                         <TouchableOpacity
                             style={[styles.splitModeBtn, splitType === 'equal' && [styles.splitModeBtnActive, { backgroundColor: colors.card }]]}
-                            onPress={() => setSplitType('equal')}
+                            onPress={() => { triggerHaptic('selection'); setSplitType('equal'); }}
                         >
                             <Ionicons name="pie-chart-outline" size={16} color={splitType === 'equal' ? colors.primary : colors.textSecondary} />
                             <Text style={[styles.splitModeText, splitType === 'equal' && { color: colors.primary, fontWeight: '700' }]}>Equal Split</Text>
@@ -181,7 +197,7 @@ export default function SplitBillScreen({ navigation }) {
 
                         <TouchableOpacity
                             style={[styles.splitModeBtn, splitType === 'custom' && [styles.splitModeBtnActive, { backgroundColor: colors.card }]]}
-                            onPress={() => setSplitType('custom')}
+                            onPress={() => { triggerHaptic('selection'); setSplitType('custom'); }}
                         >
                             <Ionicons name="options-outline" size={16} color={splitType === 'custom' ? colors.primary : colors.textSecondary} />
                             <Text style={[styles.splitModeText, splitType === 'custom' && { color: colors.primary, fontWeight: '700' }]}>Custom Split</Text>
@@ -228,8 +244,25 @@ export default function SplitBillScreen({ navigation }) {
                                     </View>
                                 )}
 
-                                <TouchableOpacity onPress={() => removePerson(person.id)} style={{ padding: 6, marginLeft: 4 }}>
-                                    <Ionicons name="trash-outline" size={18} color="#FF6B6B" />
+                                <TouchableOpacity 
+                                    onPress={() => {
+                                        triggerHaptic('light');
+                                        removePerson(person.id);
+                                    }} 
+                                    style={{ 
+                                        width: 34, 
+                                        height: 34, 
+                                        borderRadius: 10, 
+                                        backgroundColor: isDark ? 'rgba(255, 71, 87, 0.16)' : '#FFF0F0',
+                                        borderColor: isDark ? 'rgba(255, 71, 87, 0.3)' : '#FECDD3',
+                                        borderWidth: 1,
+                                        justifyContent: 'center', 
+                                        alignItems: 'center',
+                                        marginLeft: 6 
+                                    }}
+                                    activeOpacity={0.7}
+                                >
+                                    <Ionicons name="trash" size={15} color="#FF4757" />
                                 </TouchableOpacity>
                             </View>
                         ))}

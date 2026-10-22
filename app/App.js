@@ -5,6 +5,9 @@ import { useShareIntent } from 'expo-share-intent';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import * as SplashScreen from 'expo-splash-screen';
+import TextRecognition from '@react-native-ml-kit/text-recognition';
+import { parseTransactionText } from './src/utils/parseTransactionText';
+import { triggerHaptic } from './src/utils/haptics';
 import { API_BASE_URL } from './src/config';
 import LoginScreen from './src/screens/LoginScreen';
 import SignupScreen from './src/screens/SignupScreen';
@@ -235,59 +238,73 @@ function AppContent() {
   }, []);
 
   useEffect(() => {
-    const handleSharedText = async () => {
-      if (hasShareIntent && shareIntent.value) {
-        const sharedText = shareIntent.value;
-        resetShareIntent(); // Reset immediately so it doesn't fire twice
-        
-        try {
-          const token = await AsyncStorage.getItem('token');
-          if (!token) {
-            // User not logged in, can't save expense automatically
-            return;
-          }
+    const handleShareIntent = async () => {
+      if (!hasShareIntent) return;
 
-          // Simple regex to find an amount (e.g., Rs 500, ₹ 100.50, INR 50)
-          const amountMatch = sharedText.match(/(?:rs\.?|inr|₹)\s*([\d,]+\.?\d*)/i);
-          let amount = 0;
-          if (amountMatch && amountMatch[1]) {
-            amount = parseFloat(amountMatch[1].replace(/,/g, ''));
-          }
+      // ── Determine what was shared ──────────────────────────────────────────
+      const intentType = shareIntent?.type;     // 'text' | 'media' | 'file' | 'weburl'
+      const sharedText = shareIntent?.text;     // present for text shares
+      const sharedFiles = shareIntent?.files;   // array for image/file shares
 
-          // Try to extract a name (e.g., "Paid to John Doe")
-          let title = 'Shared Expense';
-          const toMatch = sharedText.match(/to\s+([A-Za-z\s]+)(?:\s|$)/i);
-          if (toMatch && toMatch[1]) {
-              title = toMatch[1].trim();
-          }
+      const hasText = intentType === 'text' && sharedText;
+      const hasImage =
+        (intentType === 'media' || intentType === 'file') &&
+        Array.isArray(sharedFiles) &&
+        sharedFiles.length > 0 &&
+        sharedFiles[0].mimeType?.startsWith('image/');
 
-          if (amount > 0) {
-            // Automatically save to backend
-            await axios.post(`${API_BASE_URL}/expenses`, {
-              title,
-              amount,
-              date: new Date().toISOString()
-            }, {
-              headers: { Authorization: `Bearer ${token}` }
-            });
+      if (!hasText && !hasImage) {
+        resetShareIntent();
+        return;
+      }
 
-            // Navigate to Main to refresh data
-            if (navigationRef.isReady()) {
-              navigationRef.navigate('Main', { screen: 'Home' });
+      resetShareIntent(); // Reset immediately so it doesn't fire twice
+
+      try {
+        const token = await AsyncStorage.getItem('token');
+        if (!token) return; // User not logged in
+
+        let parsedData = { amount: 0, title: 'Shared Expense', date: null, category: 'Other' };
+        let sourceLabel = 'text';
+
+        if (hasText) {
+          // ── Text Share: parse directly ─────────────────────────────────────
+          parsedData = parseTransactionText(sharedText);
+          sourceLabel = 'text';
+        } else if (hasImage) {
+          // ── Image Share: run OCR first, then parse ─────────────────────────
+          sourceLabel = 'image';
+          const imageUri = sharedFiles[0].path;
+          try {
+            console.log('[ShareIntent] Running OCR on image:', imageUri);
+            const ocrResult = await TextRecognition.recognize(imageUri);
+            console.log('[ShareIntent] OCR Raw Text:', ocrResult?.text);
+            if (ocrResult && ocrResult.text) {
+              parsedData = parseTransactionText(ocrResult.text);
+              console.log('[ShareIntent] Parsed result:', parsedData);
             }
-          } else {
-             // If we couldn't parse the amount, take them to the Add screen with text
-             if (navigationRef.isReady()) {
-               navigationRef.navigate('AddExpense', { prefilledTitle: sharedText.substring(0, 50) });
-             }
+          } catch (ocrErr) {
+            console.error('OCR failed:', ocrErr);
+            // Still navigate to AddExpense even if OCR fails
           }
-        } catch (error) {
-          console.error('Failed to process shared intent', error);
         }
+
+        // ── Navigate to AddExpense with pre-filled data ────────────────────
+        if (navigationRef.isReady()) {
+          navigationRef.navigate('AddExpense', {
+            prefilledTitle: parsedData.title,
+            prefilledAmount: parsedData.amount > 0 ? parsedData.amount.toString() : '',
+            prefilledDate: parsedData.date ? parsedData.date.toISOString() : null,
+            prefilledCategory: parsedData.category,
+            fromShareSource: sourceLabel,  // 'text' or 'image'
+          });
+        }
+      } catch (error) {
+        console.error('Failed to process shared intent:', error);
       }
     };
 
-    handleSharedText();
+    handleShareIntent();
   }, [hasShareIntent, shareIntent, resetShareIntent]);
 
   useEffect(() => {

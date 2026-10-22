@@ -1,9 +1,8 @@
-import React, { useState, useCallback, useLayoutEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView, Modal, DeviceEventEmitter } from 'react-native';
+import React, { useState, useEffect, useCallback, useLayoutEffect } from 'react';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView, Modal, DeviceEventEmitter, Platform, Pressable } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import axios from 'axios';
 import NetInfo from '@react-native-community/netinfo';
-import uuid from 'react-native-uuid';
 import { SyncService } from '../services/SyncService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Calendar } from 'react-native-calendars';
@@ -45,18 +44,51 @@ const AddExpenseScreen = ({ navigation, route }) => {
     const { colors, isDark } = useTheme();
     const expenseToEdit = route.params?.expense;
     const prefilledTitle = route.params?.prefilledTitle;
+    const prefilledAmount = route.params?.prefilledAmount;
+    const prefilledDate = route.params?.prefilledDate;
+    const prefilledCategory = route.params?.prefilledCategory;
+    const fromShareSource = route.params?.fromShareSource; // 'text' | 'image' | undefined
+
+    // Resolve initial date: prefer prefilledDate, fallback to today
+    const resolveInitialDate = () => {
+        if (expenseToEdit) return new Date(expenseToEdit.date);
+        if (prefilledDate) {
+            const d = new Date(prefilledDate);
+            if (!isNaN(d.getTime())) return d;
+        }
+        return new Date();
+    };
     
     const [title, setTitle] = useState(expenseToEdit ? expenseToEdit.title : (prefilledTitle || ''));
-    const [amount, setAmount] = useState(expenseToEdit ? expenseToEdit.amount.toString() : '');
-    const [date, setDate] = useState(expenseToEdit ? new Date(expenseToEdit.date) : new Date());
+    const [amount, setAmount] = useState(expenseToEdit ? expenseToEdit.amount.toString() : (prefilledAmount || ''));
+    const [date, setDate] = useState(resolveInitialDate);
     const [showDatePicker, setShowDatePicker] = useState(false);
     
-    const [category, setCategory] = useState(expenseToEdit?.category || 'Other');
+    const [category, setCategory] = useState(expenseToEdit?.category || prefilledCategory || 'Other');
     const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
     
     const [banks, setBanks] = useState([]);
     const [selectedBankId, setSelectedBankId] = useState(expenseToEdit ? expenseToEdit.bankId : null);
     const [showDropdown, setShowDropdown] = useState(false);
+
+    // Sync state whenever new route params are passed (e.g. sharing from external app while screen was mounted)
+    useEffect(() => {
+        if (route.params?.prefilledTitle !== undefined) {
+            setTitle(route.params.prefilledTitle || '');
+        }
+        if (route.params?.prefilledAmount !== undefined) {
+            setAmount(route.params.prefilledAmount || '');
+        }
+        if (route.params?.prefilledDate) {
+            const parsed = new Date(route.params.prefilledDate);
+            if (!isNaN(parsed.getTime())) {
+                setDate(parsed);
+            }
+        }
+        if (route.params?.prefilledCategory) {
+            setCategory(route.params.prefilledCategory);
+        }
+    }, [route.params?.prefilledTitle, route.params?.prefilledAmount, route.params?.prefilledDate, route.params?.prefilledCategory]);
 
     const insets = useSafeAreaInsets();
 
@@ -279,7 +311,7 @@ const AddExpenseScreen = ({ navigation, route }) => {
                         animationType="fade"
                         onRequestClose={() => setShowDatePicker(false)}
                     >
-                        <View style={styles.modalOverlay}>
+                        <View style={[styles.modalOverlay, { justifyContent: 'center' }]}>
                             <View style={[styles.calendarContainer, { backgroundColor: colors.card }]}>
                                 <Calendar
                                     current={date.toISOString()}
@@ -317,80 +349,158 @@ const AddExpenseScreen = ({ navigation, route }) => {
                 )}
 
                 {/* Category */}
-                <View style={{ zIndex: 20, marginBottom: showCategoryDropdown ? 10 : 0 }}>
+                <View style={{ marginBottom: 20 }}>
                     <Text style={[styles.label, { color: colors.text }]}>Category</Text>
-                    <TouchableOpacity style={[styles.datePickerButton, { backgroundColor: colors.inputBg, borderColor: colors.border, marginBottom: showCategoryDropdown ? 10 : 20 }]} onPress={() => { setShowCategoryDropdown(!showCategoryDropdown); setShowDropdown(false); }}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                <Ionicons name={getCategoryIcon(category)} size={18} color={getCategoryColor(category)} style={styles.inputLeftIcon} />
-                                <Text style={[styles.datePickerText, { color: colors.text }]}>{category}</Text>
-                            </View>
-                            <Ionicons name={showCategoryDropdown ? "chevron-up" : "chevron-down"} size={18} color={colors.textSecondary} style={{ marginRight: 15 }} />
-                        </TouchableOpacity>
-                        {showCategoryDropdown && (
-                            <View style={[styles.dropdownMenu, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                                <ScrollView nestedScrollEnabled={true}>
-                                    {CATEGORIES.map(cat => (
-                                        <TouchableOpacity 
-                                            key={cat} 
-                                            style={[styles.dropdownItem, { borderBottomColor: colors.border }]}
-                                            onPress={() => {
-                                                setCategory(cat);
-                                                setShowCategoryDropdown(false);
-                                            }}
-                                        >
-                                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                                <Ionicons name={getCategoryIcon(cat)} size={18} color={getCategoryColor(cat)} style={{ marginRight: 10 }} />
-                                                <Text style={[styles.dropdownItemText, { color: colors.text }, category === cat && { fontWeight: '700', color: colors.primary }]}>{cat}</Text>
-                                            </View>
-                                        </TouchableOpacity>
-                                    ))}
-                                </ScrollView>
-                            </View>
-                        )}
+                    <TouchableOpacity 
+                        style={[styles.datePickerButton, { backgroundColor: colors.inputBg, borderColor: colors.border }]} 
+                        onPress={() => setShowCategoryDropdown(true)}
+                    >
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                            <Ionicons name={getCategoryIcon(category)} size={18} color={getCategoryColor(category)} style={styles.inputLeftIcon} />
+                            <Text style={[styles.datePickerText, { color: colors.text }]}>{category}</Text>
+                        </View>
+                        <Ionicons name="chevron-down" size={18} color={colors.textSecondary} style={{ marginRight: 15 }} />
+                    </TouchableOpacity>
                 </View>
 
                 {/* Bank */}
                 {banks.length > 0 && (
-                    <View style={{ zIndex: 10 }}>
+                    <View style={{ marginBottom: 20 }}>
                         <Text style={[styles.label, { color: colors.text }]}>Paid From Bank</Text>
                         {banks.length === 1 ? (
-                            <View style={[styles.inputContainer, { backgroundColor: colors.inputBg, borderColor: colors.border }]}>
+                            <View style={[styles.inputContainer, { backgroundColor: colors.inputBg, borderColor: colors.border, marginBottom: 0 }]}>
                                 <Ionicons name="business-outline" size={18} color={colors.textSecondary} style={styles.inputLeftIcon} />
                                 <Text style={[styles.staticInputText, { color: colors.text }]}>{banks[0].name}</Text>
                             </View>
                         ) : (
-                            <View>
-                                <TouchableOpacity style={[styles.datePickerButton, { backgroundColor: colors.inputBg, borderColor: colors.border, marginBottom: showDropdown ? 10 : 20 }]} onPress={() => { setShowDropdown(!showDropdown); setShowCategoryDropdown(false); }}>
-                                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                        <Ionicons name="business-outline" size={18} color={colors.textSecondary} style={styles.inputLeftIcon} />
-                                        <Text style={[styles.datePickerText, { color: selectedBankId ? colors.text : colors.textMuted }]}>
-                                            {selectedBankId ? banks.find(b => b._id === selectedBankId)?.name : 'Select a bank...'}
-                                        </Text>
-                                    </View>
-                                    <Ionicons name={showDropdown ? "chevron-up" : "chevron-down"} size={18} color={colors.textSecondary} style={{ marginRight: 15 }} />
-                                </TouchableOpacity>
-                                {showDropdown && (
-                                    <View style={[styles.dropdownMenu, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                                        <ScrollView nestedScrollEnabled={true}>
-                                            {banks.map(bank => (
-                                                <TouchableOpacity 
-                                                    key={bank._id} 
-                                                    style={[styles.dropdownItem, { borderBottomColor: colors.border }]}
-                                                    onPress={() => {
-                                                        setSelectedBankId(bank._id);
-                                                        setShowDropdown(false);
-                                                    }}
-                                                >
-                                                    <Text style={[styles.dropdownItemText, { color: colors.text }, selectedBankId === bank._id && { fontWeight: '700', color: colors.primary }]}>{bank.name}</Text>
-                                                </TouchableOpacity>
-                                            ))}
-                                        </ScrollView>
-                                    </View>
-                                )}
-                            </View>
+                            <TouchableOpacity 
+                                style={[styles.datePickerButton, { backgroundColor: colors.inputBg, borderColor: colors.border, marginBottom: 0 }]} 
+                                onPress={() => setShowDropdown(true)}
+                            >
+                                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                    <Ionicons name="business-outline" size={18} color={colors.textSecondary} style={styles.inputLeftIcon} />
+                                    <Text style={[styles.datePickerText, { color: selectedBankId ? colors.text : colors.textMuted }]}>
+                                        {selectedBankId ? banks.find(b => b._id === selectedBankId)?.name : 'Select a bank...'}
+                                    </Text>
+                                </View>
+                                <Ionicons name="chevron-down" size={18} color={colors.textSecondary} style={{ marginRight: 15 }} />
+                            </TouchableOpacity>
                         )}
                     </View>
                 )}
+
+                {/* Category Selector Modal */}
+                <Modal
+                    visible={showCategoryDropdown}
+                    transparent={true}
+                    animationType="slide"
+                    onRequestClose={() => setShowCategoryDropdown(false)}
+                >
+                    <Pressable style={styles.modalOverlay} onPress={() => setShowCategoryDropdown(false)}>
+                        <Pressable style={[styles.sheetModalCard, { backgroundColor: colors.card, borderColor: colors.border }]} onPress={e => e.stopPropagation()}>
+                            <View style={styles.sheetHeader}>
+                                <View>
+                                    <Text style={[styles.sheetTitle, { color: colors.text }]}>Select Category</Text>
+                                    <Text style={[styles.sheetSubtitle, { color: colors.textSecondary }]}>Assign a category to your expense</Text>
+                                </View>
+                                <TouchableOpacity onPress={() => setShowCategoryDropdown(false)} style={styles.sheetCloseBtn}>
+                                    <Ionicons name="close" size={20} color={colors.textSecondary} />
+                                </TouchableOpacity>
+                            </View>
+                            <ScrollView style={{ maxHeight: 320 }} showsVerticalScrollIndicator={false}>
+                                {CATEGORIES.map(cat => {
+                                    const isSelected = category === cat;
+                                    return (
+                                        <TouchableOpacity 
+                                            key={cat} 
+                                            style={[
+                                                styles.pickerOptionRow, 
+                                                { borderColor: isSelected ? colors.primary : colors.border },
+                                                isSelected && { backgroundColor: isDark ? 'rgba(99, 102, 241, 0.16)' : '#EEEDFF' }
+                                            ]}
+                                            onPress={() => {
+                                                setCategory(cat);
+                                                setShowCategoryDropdown(false);
+                                            }}
+                                            activeOpacity={0.7}
+                                        >
+                                            <View style={[styles.pickerOptionIcon, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#F8FAFC' }]}>
+                                                <Ionicons name={getCategoryIcon(cat)} size={20} color={getCategoryColor(cat)} />
+                                            </View>
+                                            <Text style={[styles.pickerOptionText, { color: isSelected ? colors.primary : colors.text, fontWeight: isSelected ? '700' : '600' }]}>
+                                                {cat}
+                                            </Text>
+                                            <Ionicons 
+                                                name={isSelected ? "checkmark-circle" : "ellipse-outline"} 
+                                                size={20} 
+                                                color={isSelected ? colors.primary : colors.textSecondary} 
+                                            />
+                                        </TouchableOpacity>
+                                    );
+                                })}
+                            </ScrollView>
+                        </Pressable>
+                    </Pressable>
+                </Modal>
+
+                {/* Bank Selector Modal */}
+                <Modal
+                    visible={showDropdown}
+                    transparent={true}
+                    animationType="slide"
+                    onRequestClose={() => setShowDropdown(false)}
+                >
+                    <Pressable style={styles.modalOverlay} onPress={() => setShowDropdown(false)}>
+                        <Pressable style={[styles.sheetModalCard, { backgroundColor: colors.card, borderColor: colors.border }]} onPress={e => e.stopPropagation()}>
+                            <View style={styles.sheetHeader}>
+                                <View>
+                                    <Text style={[styles.sheetTitle, { color: colors.text }]}>Select Bank</Text>
+                                    <Text style={[styles.sheetSubtitle, { color: colors.textSecondary }]}>Deduct expense amount from</Text>
+                                </View>
+                                <TouchableOpacity onPress={() => setShowDropdown(false)} style={styles.sheetCloseBtn}>
+                                    <Ionicons name="close" size={20} color={colors.textSecondary} />
+                                </TouchableOpacity>
+                            </View>
+                            <ScrollView style={{ maxHeight: 300 }} showsVerticalScrollIndicator={false}>
+                                {banks.map(bank => {
+                                    const isSelected = selectedBankId === bank._id;
+                                    return (
+                                        <TouchableOpacity 
+                                            key={bank._id} 
+                                            style={[
+                                                styles.pickerOptionRow, 
+                                                { borderColor: isSelected ? colors.primary : colors.border },
+                                                isSelected && { backgroundColor: isDark ? 'rgba(99, 102, 241, 0.16)' : '#EEEDFF' }
+                                            ]}
+                                            onPress={() => {
+                                                setSelectedBankId(bank._id);
+                                                setShowDropdown(false);
+                                            }}
+                                            activeOpacity={0.7}
+                                        >
+                                            <View style={[styles.pickerOptionIcon, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#F8FAFC' }]}>
+                                                <Ionicons name="business" size={18} color={isSelected ? colors.primary : colors.textSecondary} />
+                                            </View>
+                                            <View style={{ flex: 1, marginLeft: 12 }}>
+                                                <Text style={[styles.pickerOptionText, { color: isSelected ? colors.primary : colors.text, fontWeight: isSelected ? '700' : '600' }]} numberOfLines={1}>
+                                                    {bank.name}
+                                                </Text>
+                                                <Text style={{ fontSize: 12, color: isSelected ? colors.primary : colors.textSecondary, marginTop: 2 }}>
+                                                    ₹{Number(bank.amount || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                                                </Text>
+                                            </View>
+                                            <Ionicons 
+                                                name={isSelected ? "checkmark-circle" : "ellipse-outline"} 
+                                                size={20} 
+                                                color={isSelected ? colors.primary : colors.textSecondary} 
+                                            />
+                                        </TouchableOpacity>
+                                    );
+                                })}
+                            </ScrollView>
+                        </Pressable>
+                    </Pressable>
+                </Modal>
 
                 <TouchableOpacity style={styles.primaryBtn} onPress={handleSave}>
                     <View style={styles.btnContentRow}>
@@ -444,8 +554,8 @@ const styles = StyleSheet.create({
     dropdownMenu: {
         backgroundColor: '#FFFFFF', 
         borderRadius: 16, borderWidth: 1, borderColor: '#E2E8F0',
-        shadowColor: '#4F46E5', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 10, elevation: 2,
-        maxHeight: 180, overflow: 'hidden', marginBottom: 20
+        shadowColor: '#000000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.18, shadowRadius: 12, elevation: 8,
+        maxHeight: 200, overflow: 'hidden'
     },
     dropdownItem: { padding: 16, borderBottomWidth: 1, borderBottomColor: '#F8FAFC' },
     dropdownItemText: { fontSize: 15, color: '#334155', fontWeight: '500' },
@@ -454,8 +564,29 @@ const styles = StyleSheet.create({
     btnContentRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
     primaryBtnText: { color: '#FFF', fontWeight: '700', fontSize: 16 },
 
-    modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.4)', justifyContent: 'center', alignItems: 'center' },
-    calendarContainer: { width: '90%', backgroundColor: '#FFFFFF', borderRadius: 24, padding: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.2, shadowRadius: 20, elevation: 15 },
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.55)', justifyContent: 'flex-end' },
+    sheetModalCard: {
+        width: '100%', borderTopLeftRadius: 28, borderTopRightRadius: 28, borderWidth: 1,
+        paddingHorizontal: 20, paddingTop: 20, paddingBottom: 35,
+        shadowColor: '#000', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.15, shadowRadius: 16, elevation: 20,
+    },
+    sheetHeader: {
+        flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+        paddingBottom: 16, marginBottom: 8, borderBottomWidth: 1, borderBottomColor: 'rgba(148, 163, 184, 0.15)',
+    },
+    sheetTitle: { fontSize: 17, fontWeight: '800' },
+    sheetSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2 },
+    sheetCloseBtn: { width: 34, height: 34, borderRadius: 17, justifyContent: 'center', alignItems: 'center' },
+    pickerOptionRow: {
+        flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16,
+        borderWidth: 1, marginBottom: 10,
+    },
+    pickerOptionIcon: {
+        width: 38, height: 38, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: 12,
+    },
+    pickerOptionText: { fontSize: 15, flex: 1 },
+
+    calendarContainer: { width: '90%', alignSelf: 'center', backgroundColor: '#FFFFFF', borderRadius: 24, padding: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.2, shadowRadius: 20, elevation: 15 },
     closeCalendarBtn: { marginTop: 15, paddingVertical: 12, backgroundColor: '#F1F5F9', borderRadius: 12, alignItems: 'center' },
     closeCalendarText: { color: '#64748B', fontWeight: '700', fontSize: 15 }
 });

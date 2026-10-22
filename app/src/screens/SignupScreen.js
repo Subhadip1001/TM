@@ -6,11 +6,13 @@ import axios from 'axios';
 import { Ionicons } from '@expo/vector-icons';
 
 import { API_BASE_URL } from '../config';
+import { useTheme } from '../context/ThemeContext';
 
 const API_URL = `${API_BASE_URL}/auth`;
 
 
 const SignupScreen = ({ navigation }) => {
+    const { colors, isDark } = useTheme();
     const [username, setUsername] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -21,12 +23,38 @@ const SignupScreen = ({ navigation }) => {
     const handleSignup = async () => {
         if (isLoading) return;
         setErrorMessage('');
+
+        const trimmedEmail = (email || '').trim().toLowerCase();
+        const trimmedUsername = (username || '').trim();
+
+        if (!trimmedUsername) {
+            setErrorMessage('Please enter your username');
+            return;
+        }
+
+        if (!trimmedEmail) {
+            setErrorMessage('Please enter your Gmail address');
+            return;
+        }
+
+        // Strict Gmail address validation (must end with @gmail.com)
+        const gmailRegex = /^[a-z0-9][a-z0-9._%+-]*@gmail\.com$/;
+        if (!gmailRegex.test(trimmedEmail)) {
+            setErrorMessage('Please enter a valid Gmail address (e.g. yourname@gmail.com)');
+            return;
+        }
+
+        if (!password || password.length < 6) {
+            setErrorMessage('Password must be at least 6 characters long');
+            return;
+        }
+
         setIsLoading(true);
         try {
-            const res = await axios.post(`${API_URL}/register`, { username, email, password });
+            const res = await axios.post(`${API_URL}/register`, { username: trimmedUsername, email: trimmedEmail, password });
             if (res.status === 201) {
                 // Automatically log the user in after registration
-                const loginRes = await axios.post(`${API_URL}/login`, { email, password });
+                const loginRes = await axios.post(`${API_URL}/login`, { email: trimmedEmail, password });
                 if (loginRes.data.token) {
                     await AsyncStorage.setItem('token', loginRes.data.token);
                     navigation.reset({
@@ -45,50 +73,75 @@ const SignupScreen = ({ navigation }) => {
 
     return (
         <KeyboardAwareScrollView 
-            style={{ flex: 1, backgroundColor: '#F4F7FC' }} 
-            contentContainerStyle={styles.container} 
+            style={{ flex: 1, backgroundColor: colors.background }} 
+            contentContainerStyle={[styles.container, { backgroundColor: colors.background }]} 
             keyboardShouldPersistTaps="handled"
             enableOnAndroid={true}
-            extraScrollHeight={Platform.OS === 'ios' ? 80 : 120}
-            extraHeight={120}
-            enableAutomaticScroll={true}
+            enableResetScrollToCoords={false}
+            extraScrollHeight={Platform.OS === 'ios' ? 40 : 0}
+            extraHeight={Platform.OS === 'ios' ? 60 : 0}
+            enableAutomaticScroll={Platform.OS === 'ios'}
+            bounces={false}
         >
-            <View>
+            <View style={{ width: '100%' }}>
                 <View style={{ alignItems: 'center', marginBottom: 20 }}>
-                    <View style={{ backgroundColor: '#EEEDFF', padding: 20, borderRadius: 24 }}>
-                        <Ionicons name="wallet" size={40} color="#4F46E5" />
+                    <View style={{ backgroundColor: colors.primaryLight, padding: 20, borderRadius: 24 }}>
+                        <Ionicons name="wallet" size={40} color={colors.primary} />
                     </View>
                 </View>
-                <Text style={styles.title}>Create Account</Text>
+                <Text style={[styles.title, { color: colors.text }]}>Create Account</Text>
 
             {errorMessage ? (
-                <View style={styles.errorContainer}>
+                <View style={[styles.errorContainer, { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.15)' : '#FFF1F2', borderColor: isDark ? 'rgba(239, 68, 68, 0.4)' : '#FECDD3' }]}>
                     <Ionicons name="alert-circle" size={20} color="#EF4444" />
                     <Text style={styles.errorText}>{errorMessage}</Text>
                 </View>
             ) : null}
 
             <TextInput 
-                style={styles.input} 
+                style={[
+                    styles.input, 
+                    { 
+                        backgroundColor: colors.card, 
+                        color: colors.text, 
+                        borderColor: isDark ? colors.border : '#F1F5F9',
+                        borderWidth: 1 
+                    }
+                ]} 
                 placeholder="Username" 
-                placeholderTextColor="#94A3B8"
+                placeholderTextColor={colors.textMuted}
                 value={username}
                 onChangeText={setUsername}
             />
             <TextInput 
-                style={styles.input} 
-                placeholder="Email" 
-                placeholderTextColor="#94A3B8"
+                style={[
+                    styles.input, 
+                    { 
+                        backgroundColor: colors.card, 
+                        color: colors.text, 
+                        borderColor: isDark ? colors.border : '#F1F5F9',
+                        borderWidth: 1 
+                    }
+                ]} 
+                placeholder="name@gmail.com" 
+                placeholderTextColor={colors.textMuted}
                 value={email}
                 onChangeText={setEmail}
                 keyboardType="email-address"
                 autoCapitalize="none"
             />
-            <View style={styles.passwordContainer}>
+            <View style={[
+                styles.passwordContainer, 
+                { 
+                    backgroundColor: colors.card, 
+                    borderColor: isDark ? colors.border : '#F1F5F9',
+                    borderWidth: 1 
+                }
+            ]}>
                 <TextInput 
-                    style={styles.passwordInput} 
+                    style={[styles.passwordInput, { color: colors.text }]} 
                     placeholder="Password" 
-                    placeholderTextColor="#94A3B8"
+                    placeholderTextColor={colors.textMuted}
                     value={password}
                     onChangeText={setPassword}
                     secureTextEntry={!showPassword}
@@ -97,22 +150,29 @@ const SignupScreen = ({ navigation }) => {
                     style={styles.eyeIcon} 
                     onPress={() => setShowPassword(!showPassword)}
                 >
-                    <Ionicons name={showPassword ? "eye-off" : "eye"} size={24} color="gray" />
+                    <Ionicons name={showPassword ? "eye-off" : "eye"} size={24} color={colors.textSecondary} />
                 </TouchableOpacity>
             </View>
             <TouchableOpacity 
-                style={[styles.button, isLoading && styles.buttonDisabled]} 
+                style={[styles.button, { backgroundColor: colors.primary }, isLoading && styles.buttonDisabled]} 
                 onPress={handleSignup}
                 disabled={isLoading}
+                activeOpacity={0.85}
             >
                 {isLoading ? (
-                    <ActivityIndicator size="small" color="#FFFFFF" />
+                    <View style={styles.loadingRow}>
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                        <Text style={styles.loadingText}>Creating your account...</Text>
+                    </View>
                 ) : (
-                    <Text style={styles.buttonText}>Sign Up</Text>
+                    <View style={styles.btnContentRow}>
+                        <Text style={styles.buttonText}>Sign Up</Text>
+                        <Ionicons name="sparkles" size={18} color="#FFFFFF" style={{ marginLeft: 8 }} />
+                    </View>
                 )}
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => navigation.navigate('Login')}>
-                <Text style={styles.linkText}>Already have an account? Login</Text>
+            <TouchableOpacity onPress={() => navigation.navigate('Login')} disabled={isLoading}>
+                <Text style={[styles.linkText, { color: colors.primary }]}>Already have an account? Login</Text>
             </TouchableOpacity>
             </View>
         </KeyboardAwareScrollView>
@@ -143,7 +203,10 @@ const styles = StyleSheet.create({
         backgroundColor: '#4F46E5', height: 60, borderRadius: 16, justifyContent: 'center', alignItems: 'center', 
         marginTop: 10, shadowColor: '#4F46E5', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.35, shadowRadius: 15, elevation: 8
     },
-    buttonDisabled: { backgroundColor: '#818CF8' },
+    buttonDisabled: { backgroundColor: '#6366F1', opacity: 0.9 },
+    btnContentRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
+    loadingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
+    loadingText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700', letterSpacing: 0.3 },
     buttonText: { color: '#FFFFFF', fontSize: 18, fontWeight: '800', letterSpacing: 0.5 },
     linkText: { color: '#4F46E5', marginTop: 30, textAlign: 'center', fontSize: 16, fontWeight: '700' }
 });

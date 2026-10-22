@@ -9,13 +9,20 @@ const router = express.Router();
 router.post('/register', async (req, res) => {
     try {
         const { username, email, password } = req.body;
-        const existingUser = await User.findOne({ email });
+        const normalizedEmail = (email || '').trim().toLowerCase();
+
+        const gmailRegex = /^[a-z0-9][a-z0-9._%+-]*@gmail\.com$/;
+        if (!gmailRegex.test(normalizedEmail)) {
+            return res.status(400).json({ error: 'A valid Gmail address (@gmail.com) is required' });
+        }
+
+        const existingUser = await User.findOne({ email: normalizedEmail });
         if (existingUser) return res.status(400).json({ error: 'Email already exists' });
 
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
 
-        const newUser = new User({ username, email, password: hashedPassword });
+        const newUser = new User({ username, email: normalizedEmail, password: hashedPassword });
         await newUser.save();
         res.status(201).json({ message: 'User registered successfully' });
     } catch (err) {

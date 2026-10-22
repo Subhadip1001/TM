@@ -12,6 +12,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { G, Circle } from 'react-native-svg';
 import { useTheme } from '../context/ThemeContext';
 import { API_BASE_URL } from '../config';
+import { triggerHaptic } from '../utils/haptics';
 
 const AUTH_URL = `${API_BASE_URL}/auth`;
 const EXPENSES_URL = `${API_BASE_URL}/expenses`;
@@ -304,16 +305,17 @@ const ProfileScreen = ({ navigation }) => {
 
     return (
         <View style={{ flex: 1, backgroundColor: colors.background }}>
-            <KeyboardAwareScrollView 
-                style={[styles.container, { backgroundColor: colors.background }]} 
-                contentContainerStyle={{ paddingBottom: 24, paddingTop: Math.max(insets.top + 10, 20) }} 
-                showsVerticalScrollIndicator={false}
-            >
-            {/* Custom Header */}
-            <View style={styles.headerTitleRow}>
+            {/* Fixed Header */}
+            <View style={[styles.headerTitleRow, { paddingTop: Math.max(insets.top + 10, 20), paddingHorizontal: 20 }]}>
                 <Text style={[styles.headerTitleText, { color: colors.text }]}>Profile</Text>
             </View>
 
+            {/* Scrollable Content */}
+            <KeyboardAwareScrollView 
+                style={[styles.container, { backgroundColor: colors.background }]} 
+                contentContainerStyle={{ paddingBottom: 24, paddingTop: 4 }} 
+                showsVerticalScrollIndicator={false}
+            >
             {/* Profile Card */}
             <LinearGradient colors={['#4F46E5', '#3730A3']} style={styles.profileCard} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
                 <View style={styles.profileHeaderLeft}>
@@ -408,23 +410,43 @@ const ProfileScreen = ({ navigation }) => {
 
                 {user?.banks && user.banks.length > 0 ? (
                     user.banks.map((bank, index) => (
-                        <View key={index} style={styles.bankItem}>
+                        <View key={index} style={[styles.bankItem, { borderBottomColor: colors.border }]}>
                             {editingBankId === bank._id ? (
                                 <View style={{ flex: 1 }}>
-                                    <View style={[styles.passwordContainer, { marginBottom: 10, height: 45 }]}>
-                                        <TextInput style={styles.passwordInput} value={editBankName} onChangeText={setEditBankName} placeholder="Bank Name" />
+                                    <View style={[styles.passwordContainer, { marginBottom: 10, height: 45, backgroundColor: colors.inputBg, borderColor: colors.border }]}>
+                                        <TextInput 
+                                            style={[styles.passwordInput, { color: colors.text }]} 
+                                            value={editBankName} 
+                                            onChangeText={setEditBankName} 
+                                            placeholder="Bank Name" 
+                                            placeholderTextColor={colors.textMuted} 
+                                        />
                                     </View>
-                                    <View style={[styles.passwordContainer, { marginBottom: 15, height: 45 }]}>
-                                        <TextInput style={styles.passwordInput} value={editBankAmount} onChangeText={setEditBankAmount} placeholder="Amount" keyboardType="numeric" />
+                                    <View style={[styles.passwordContainer, { marginBottom: 15, height: 45, backgroundColor: colors.inputBg, borderColor: colors.border }]}>
+                                        <TextInput 
+                                            style={[styles.passwordInput, { color: colors.text }]} 
+                                            value={editBankAmount} 
+                                            onChangeText={setEditBankAmount} 
+                                            placeholder="Amount" 
+                                            placeholderTextColor={colors.textMuted} 
+                                            keyboardType="numeric" 
+                                        />
                                     </View>
                                     <View style={{ flexDirection: 'row', gap: 10, justifyContent: 'flex-end' }}>
-                                        <TouchableOpacity onPress={() => setEditingBankId(null)} style={styles.cancelBtn}>
-                                            <Text style={styles.cancelBtnText}>Cancel</Text>
+                                        <TouchableOpacity 
+                                            onPress={() => setEditingBankId(null)} 
+                                            style={[styles.cancelBtn, { backgroundColor: isDark ? colors.cardBorder : '#F1F5F9' }]}
+                                        >
+                                            <Text style={[styles.cancelBtnText, { color: colors.textSecondary }]}>Cancel</Text>
                                         </TouchableOpacity>
-                                        <TouchableOpacity onPress={() => handleEditBank(bank._id)} style={styles.saveBtn}>
+                                        <TouchableOpacity 
+                                            onPress={() => handleEditBank(bank._id)} 
+                                            style={[styles.saveBtn, { backgroundColor: colors.primary }]}
+                                        >
                                             <Text style={styles.saveBtnText}>Save</Text>
                                         </TouchableOpacity>
-                                    </View>                                 </View>
+                                    </View>
+                                </View>
                             ) : (
                                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flex: 1 }}>
                                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -436,18 +458,46 @@ const ProfileScreen = ({ navigation }) => {
                                             <Text style={[styles.expenseDate, { color: colors.textSecondary }]}>₹{bank.amount.toFixed(2)}</Text>
                                         </View>
                                     </View>
-                                    <View style={{ flexDirection: 'row', gap: 10 }}>
+                                    <View style={{ flexDirection: 'row', gap: 8 }}>
                                         <TouchableOpacity 
-                                            onPress={() => { setEditingBankId(bank._id); setEditBankName(bank.name); setEditBankAmount(bank.amount.toString()); }}
-                                            style={{ backgroundColor: colors.primaryLight, width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center' }}
+                                            onPress={() => { 
+                                                triggerHaptic('light');
+                                                setEditingBankId(bank._id); 
+                                                setEditBankName(bank.name); 
+                                                setEditBankAmount(bank.amount.toString()); 
+                                            }}
+                                            style={{ 
+                                                backgroundColor: isDark ? 'rgba(99, 102, 241, 0.18)' : '#EEEDFF', 
+                                                borderColor: isDark ? 'rgba(99, 102, 241, 0.35)' : '#C7D2FE',
+                                                borderWidth: 1,
+                                                width: 36, 
+                                                height: 36, 
+                                                borderRadius: 12, 
+                                                justifyContent: 'center', 
+                                                alignItems: 'center' 
+                                            }}
+                                            activeOpacity={0.7}
                                         >
-                                            <Ionicons name="create-outline" size={18} color={colors.primary} />
+                                            <Ionicons name="pencil" size={16} color={colors.primary} />
                                         </TouchableOpacity>
                                         <TouchableOpacity 
-                                            onPress={() => handleDeleteBank(bank._id)}
-                                            style={{ backgroundColor: isDark ? 'rgba(255, 71, 87, 0.2)' : '#FFF0F0', width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center' }}
+                                            onPress={() => {
+                                                triggerHaptic('light');
+                                                handleDeleteBank(bank._id);
+                                            }}
+                                            style={{ 
+                                                backgroundColor: isDark ? 'rgba(255, 71, 87, 0.18)' : '#FFF0F0', 
+                                                borderColor: isDark ? 'rgba(255, 71, 87, 0.35)' : '#FECDD3',
+                                                borderWidth: 1,
+                                                width: 36, 
+                                                height: 36, 
+                                                borderRadius: 12, 
+                                                justifyContent: 'center', 
+                                                alignItems: 'center' 
+                                            }}
+                                            activeOpacity={0.7}
                                         >
-                                            <Ionicons name="trash-outline" size={18} color="#FF4757" />
+                                            <Ionicons name="trash" size={16} color="#FF4757" />
                                         </TouchableOpacity>
                                     </View>
                                 </View>

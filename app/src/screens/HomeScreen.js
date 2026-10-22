@@ -26,6 +26,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../context/ThemeContext';
 import { API_BASE_URL } from '../config';
+import { triggerHaptic } from '../utils/haptics';
 
 const API_URL = `${API_BASE_URL}/expenses`;
 
@@ -340,11 +341,40 @@ const HomeScreen = ({ navigation }) => {
                                 <Ionicons name="ellipsis-vertical" size={16} color={colors.textSecondary} style={{ marginLeft: 8 }} />
                             ) : (
                                 <View style={{ flexDirection: 'row', marginLeft: 10, gap: 8 }}>
-                                    <TouchableOpacity style={[styles.actionBtnSmall, { backgroundColor: colors.primaryLight }]} onPress={() => { setExpandedId(null); navigation.navigate('AddExpense', { expense: item }); }}>
-                                        <Ionicons name="create-outline" size={16} color={colors.primary} />
+                                    <TouchableOpacity 
+                                        style={[
+                                            styles.actionBtnSmall, 
+                                            { 
+                                                backgroundColor: isDark ? 'rgba(99, 102, 241, 0.18)' : '#EEEDFF',
+                                                borderColor: isDark ? 'rgba(99, 102, 241, 0.35)' : '#C7D2FE',
+                                                borderWidth: 1
+                                            }
+                                        ]} 
+                                        onPress={() => { 
+                                            triggerHaptic('light');
+                                            setExpandedId(null); 
+                                            navigation.navigate('AddExpense', { expense: item }); 
+                                        }}
+                                        activeOpacity={0.7}
+                                    >
+                                        <Ionicons name="pencil" size={14} color={colors.primary} />
                                     </TouchableOpacity>
-                                    <TouchableOpacity style={[styles.actionBtnSmall, { backgroundColor: isDark ? 'rgba(255, 71, 87, 0.2)' : '#FFF0F0' }]} onPress={() => handleDelete(item._id)}>
-                                        <Ionicons name="trash-outline" size={16} color="#FF4757" />
+                                    <TouchableOpacity 
+                                        style={[
+                                            styles.actionBtnSmall, 
+                                            { 
+                                                backgroundColor: isDark ? 'rgba(255, 71, 87, 0.18)' : '#FFF0F0',
+                                                borderColor: isDark ? 'rgba(255, 71, 87, 0.35)' : '#FECDD3',
+                                                borderWidth: 1
+                                            }
+                                        ]} 
+                                        onPress={() => {
+                                            triggerHaptic('light');
+                                            handleDelete(item._id);
+                                        }}
+                                        activeOpacity={0.7}
+                                    >
+                                        <Ionicons name="trash" size={14} color="#FF4757" />
                                     </TouchableOpacity>
                                 </View>
                             )}

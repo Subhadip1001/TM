@@ -19,6 +19,7 @@ import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
 import { API_BASE_URL } from '../config';
 import { useTheme } from '../context/ThemeContext';
+import { triggerHaptic } from '../utils/haptics';
 
 const EXPENSES_URL = `${API_BASE_URL}/expenses`;
 
@@ -395,12 +396,13 @@ export default function PdfExportScreen({ navigation }) {
 
     return (
         <View style={[styles.container, { backgroundColor: colors.background }]}>
-            <ScrollView contentContainerStyle={{ paddingBottom: 24, paddingTop: Math.max(insets.top + 10, 20) }} showsVerticalScrollIndicator={false}>
-                {/* Header */}
-                <View style={styles.headerRow}>
-                    <Text style={[styles.headerTitle, { color: colors.text }]}>Expense Reports</Text>
-                </View>
+            {/* Fixed Header */}
+            <View style={[styles.headerRow, { paddingTop: Math.max(insets.top + 10, 20) }]}>
+                <Text style={[styles.headerTitle, { color: colors.text }]}>Expense Reports</Text>
+            </View>
 
+            {/* Scrollable Content */}
+            <ScrollView contentContainerStyle={{ paddingBottom: 24, paddingTop: 4 }} showsVerticalScrollIndicator={false}>
                 {/* Banner Card */}
                 <LinearGradient colors={['#4F46E5', '#3730A3']} style={styles.bannerCard} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
                     <View style={styles.bannerIconBox}>
@@ -413,17 +415,29 @@ export default function PdfExportScreen({ navigation }) {
                 {/* Filter Selector */}
                 <View style={[styles.sectionCard, { backgroundColor: colors.card, borderColor: colors.cardBorder, borderWidth: isDark ? 1 : 0 }]}>
                     <Text style={[styles.sectionTitle, { color: colors.text }]}>Select Report Format</Text>
-                    <View style={[styles.modeToggleRow, { backgroundColor: isDark ? '#0B0F19' : '#F1F5F9' }]}>
+                    <View style={[styles.modeToggleRow, { backgroundColor: isDark ? '#0B0F19' : '#F1F5F9', borderColor: colors.border, borderWidth: isDark ? 1 : 0 }]}>
                         <TouchableOpacity
-                            style={[styles.modeToggleBtn, selectedMode === 'month' && [styles.modeToggleActive, { backgroundColor: colors.card }]]}
-                            onPress={() => setSelectedMode('month')}
+                            style={[
+                                styles.modeToggleBtn, 
+                                selectedMode === 'month' && [
+                                    styles.modeToggleActive, 
+                                    { backgroundColor: isDark ? '#1E293B' : '#FFFFFF', borderColor: isDark ? colors.cardBorder : 'transparent', borderWidth: isDark ? 1 : 0 }
+                                ]
+                            ]}
+                            onPress={() => { triggerHaptic('selection'); setSelectedMode('month'); }}
                         >
                             <Ionicons name="calendar-outline" size={16} color={selectedMode === 'month' ? colors.primary : colors.textSecondary} />
                             <Text style={[styles.modeToggleText, selectedMode === 'month' && { color: colors.primary, fontWeight: '700' }]}>Monthly Statement</Text>
                         </TouchableOpacity>
                         <TouchableOpacity
-                            style={[styles.modeToggleBtn, selectedMode === 'range' && [styles.modeToggleActive, { backgroundColor: colors.card }]]}
-                            onPress={() => setSelectedMode('range')}
+                            style={[
+                                styles.modeToggleBtn, 
+                                selectedMode === 'range' && [
+                                    styles.modeToggleActive, 
+                                    { backgroundColor: isDark ? '#1E293B' : '#FFFFFF', borderColor: isDark ? colors.cardBorder : 'transparent', borderWidth: isDark ? 1 : 0 }
+                                ]
+                            ]}
+                            onPress={() => { triggerHaptic('selection'); setSelectedMode('range'); }}
                         >
                             <Ionicons name="time-outline" size={16} color={selectedMode === 'range' ? colors.primary : colors.textSecondary} />
                             <Text style={[styles.modeToggleText, selectedMode === 'range' && { color: colors.primary, fontWeight: '700' }]}>Custom Range</Text>
@@ -481,27 +495,34 @@ export default function PdfExportScreen({ navigation }) {
                                     { key: '30days', label: 'Last 30 Days', desc: 'Past month activity' },
                                     { key: '90days', label: 'Last 90 Days', desc: 'Quarterly statement' },
                                     { key: 'all', label: 'All Time History', desc: 'Complete historical export' },
-                                ].map(item => (
-                                    <TouchableOpacity
-                                        key={item.key}
-                                        style={[
-                                            styles.rangeCard,
-                                            { backgroundColor: isDark ? '#0B0F19' : '#F8FAFC', borderColor: isDark ? colors.border : '#F1F5F9' },
-                                            rangeType === item.key && styles.rangeCardActive
-                                        ]}
-                                        onPress={() => setRangeType(item.key)}
-                                    >
-                                        <View style={{ flex: 1 }}>
-                                            <Text style={[styles.rangeCardTitle, { color: colors.text }, rangeType === item.key && styles.rangeCardTitleActive]}>{item.label}</Text>
-                                            <Text style={[styles.rangeCardDesc, { color: colors.textSecondary }]}>{item.desc}</Text>
-                                        </View>
-                                        <Ionicons
-                                            name={rangeType === item.key ? 'radio-button-on' : 'radio-button-off'}
-                                            size={20}
-                                            color={rangeType === item.key ? colors.primary : colors.textMuted}
-                                        />
-                                    </TouchableOpacity>
-                                ))}
+                                ].map(item => {
+                                    const isSelected = rangeType === item.key;
+                                    return (
+                                        <TouchableOpacity
+                                            key={item.key}
+                                            style={[
+                                                styles.rangeCard,
+                                                { 
+                                                    backgroundColor: isSelected 
+                                                        ? (isDark ? 'rgba(99, 102, 241, 0.18)' : '#EEEDFF') 
+                                                        : (isDark ? '#0B0F19' : '#F8FAFC'), 
+                                                    borderColor: isSelected ? colors.primary : (isDark ? colors.border : '#F1F5F9') 
+                                                }
+                                            ]}
+                                            onPress={() => { triggerHaptic('selection'); setRangeType(item.key); }}
+                                        >
+                                            <View style={{ flex: 1 }}>
+                                                <Text style={[styles.rangeCardTitle, { color: isSelected ? colors.primary : colors.text }]}>{item.label}</Text>
+                                                <Text style={[styles.rangeCardDesc, { color: colors.textSecondary }]}>{item.desc}</Text>
+                                            </View>
+                                            <Ionicons
+                                                name={isSelected ? 'radio-button-on' : 'radio-button-off'}
+                                                size={20}
+                                                color={isSelected ? colors.primary : colors.textMuted}
+                                            />
+                                        </TouchableOpacity>
+                                    );
+                                })}
                             </View>
                         </View>
                     )}
