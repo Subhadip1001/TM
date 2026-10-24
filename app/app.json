@@ -3,6 +3,14 @@
     "name": "Balancy",
     "slug": "balancy",
     "version": "1.1.0",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/2e29d52e-9211-4457-93ea-bc28755ab7fe",
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
+    },
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "app",

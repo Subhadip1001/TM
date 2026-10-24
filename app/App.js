@@ -19,6 +19,8 @@ import SplitBillScreen from './src/screens/SplitBillScreen';
 import CustomTabBar from './src/components/CustomTabBar';
 
 import { ThemeProvider, useTheme } from './src/context/ThemeContext';
+import { checkForAppUpdate } from './src/utils/updateService';
+import UpdateNotificationModal from './src/components/UpdateNotificationModal';
 import { StatusBar } from 'expo-status-bar';
 import { Platform, View, ScrollView, useWindowDimensions, StatusBar as RNStatusBar, Animated, Easing } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -232,6 +234,8 @@ function AppContent() {
       } finally {
         // Hide the splash screen after auth check is complete
         await SplashScreen.hideAsync();
+        // Check for over-the-air in-app updates
+        checkForAppUpdate();
       }
     };
     checkAuth();
@@ -360,6 +364,7 @@ function AppContent() {
             />
           </Stack.Navigator>
         </NavigationContainer>
+        <UpdateNotificationModal />
       </View>
     </SafeAreaProvider>
   );

@@ -13,6 +13,7 @@ import Svg, { G, Circle } from 'react-native-svg';
 import { useTheme } from '../context/ThemeContext';
 import { API_BASE_URL } from '../config';
 import { triggerHaptic } from '../utils/haptics';
+import { checkForAppUpdate } from '../utils/updateService';
 
 const AUTH_URL = `${API_BASE_URL}/auth`;
 const EXPENSES_URL = `${API_BASE_URL}/expenses`;
@@ -117,7 +118,7 @@ const ProfileScreen = ({ navigation }) => {
     const [editingBankId, setEditingBankId] = useState(null);
     const [editBankName, setEditBankName] = useState('');
     const [editBankAmount, setEditBankAmount] = useState('');
-    
+    const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
 
     const insets = useSafeAreaInsets();
 
@@ -308,6 +309,30 @@ const ProfileScreen = ({ navigation }) => {
             {/* Fixed Header */}
             <View style={[styles.headerTitleRow, { paddingTop: Math.max(insets.top + 10, 20), paddingHorizontal: 20 }]}>
                 <Text style={[styles.headerTitleText, { color: colors.text }]}>Profile</Text>
+                <TouchableOpacity 
+                    style={styles.headerUpdateBtn} 
+                    onPress={async () => {
+                        if (isCheckingUpdate) return;
+                        triggerHaptic('impactLight');
+                        setIsCheckingUpdate(true);
+                        try {
+                            await checkForAppUpdate(true);
+                        } finally {
+                            setIsCheckingUpdate(false);
+                        }
+                    }}
+                    disabled={isCheckingUpdate}
+                    activeOpacity={0.7}
+                >
+                    {isCheckingUpdate ? (
+                        <ActivityIndicator size="small" color={colors.primary} />
+                    ) : (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                            <Ionicons name="cloud-download-outline" size={13} color={colors.primary} />
+                            <Text style={[styles.headerUpdateText, { color: colors.primary }]}>Check for update</Text>
+                        </View>
+                    )}
+                </TouchableOpacity>
             </View>
 
             {/* Scrollable Content */}
@@ -607,8 +632,25 @@ const ProfileScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F9F9FB', paddingHorizontal: 20 },
     
-    headerTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', marginBottom: 20 },
+    headerTitleRow: { 
+        flexDirection: 'row', 
+        alignItems: 'center', 
+        justifyContent: 'space-between', 
+        marginBottom: 20 
+    },
     headerTitleText: { fontSize: 22, fontWeight: '800', color: '#1E293B' },
+    headerUpdateBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 5,
+        paddingHorizontal: 9,
+        borderRadius: 14,
+        backgroundColor: 'rgba(79, 70, 229, 0.08)',
+    },
+    headerUpdateText: {
+        fontSize: 12,
+        fontWeight: '600',
+    },
     
     // Profile Card
     profileCard: { 

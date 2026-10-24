@@ -178,7 +178,7 @@ const AddExpenseScreen = ({ navigation, route }) => {
                     cachedTotal += expenseData.amount;
                 }
             } else {
-                cacheExpenseData._id = uuid.v4(); 
+                cacheExpenseData._id = 'local_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9); 
                 cachedExps.unshift(cacheExpenseData);
                 cachedTotal += expenseData.amount;
             }
@@ -231,6 +231,7 @@ const AddExpenseScreen = ({ navigation, route }) => {
                 navigation.navigate('Home');
             }
         } catch (error) {
+            console.error('Failed to save expense:', error);
             Alert.alert('Error', 'Failed to save expense');
         }
     };
