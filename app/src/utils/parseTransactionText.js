@@ -8,6 +8,8 @@ const AMOUNT_PATTERNS = [
   /(?:₹|rs\.?|inr|total\s*(?:amount)?|amount\s*(?:paid)?|paid|sent|debited|transferred)[\s:=-]*(?:₹|rs\.?|inr)?\s*([\d,]+\.?\d{0,2})/i,
   // Amount followed by currency or payment keywords
   /([\d,]+\.?\d{0,2})\s*(?:₹|rs\.?|inr|debited|paid|transferred|successful)/i,
+  // "Payment of 500" or "Sent 500"
+  /(?:payment\s+of|sent|paid|transferred)\s+(?:₹|rs\.?|inr)?\s*([\d,]+\.?\d{0,2})/i,
   // Lone floating numbers with two decimal places (typical payment summary amount: 450.00 or 1,250.50)
   /(?:^|\s)(?:₹|rs\.?|inr)?\s*([1-9]\d{0,2}(?:,\d{3})*\.\d{2})(?:\s|$)/m,
   // Lone integers on their own line with preceding/following payment context
@@ -16,9 +18,11 @@ const AMOUNT_PATTERNS = [
 
 const MERCHANT_PATTERNS = [
   // Paid to / Sent to / Transfer to <Merchant>
-  /(?:paid to|payment to|sent to|transfer to|transferred to|paying)\s+([A-Za-z0-9\s&'.,\-/]{2,45}?)(?:\s*\n|\s*on\s|\s*via|\s*using|\s*upi|\s*ref|\s*transaction|\s*id|\s*banking|[.!]|$)/i,
+  /(?:paid to|payment to|sent to|transfer to|transferred to|paying)\s+([A-Za-z0-9\s&'.,\-/]{2,45}?)(?:\s*\n|\s*on\s|\s*via|\s*using|\s*upi|\s*ref|\s*transaction|\s*id|\s*banking|\s*was|[.!]|$)/i,
+  // Transferred 250 to <Merchant> / Paid 500 to <Merchant>
+  /(?:transferred|transfer|paid|sent)\s+(?:₹|rs\.?|inr)?\s*[\d,.]+\s+to\s+([A-Za-z0-9\s&'.,\-/]{2,35}?)(?:\s*\n|\s*on\s|\s*via|\s*using|\s*upi|\s*ref|\s*transaction|\s*id|\s*banking|\s*was|[.!]|$)/i,
   // To <Merchant> (standard GPay & PhonePe header)
-  /\bto\s+([A-Za-z0-9][A-Za-z0-9\s&'.,\-/]{2,35}?)(?:\s*\n|\s*on\s|\s*via|\s*using|\s*upi|\s*ref|\s*transaction|\s*id|[.!]|$)/i,
+  /\bto\s+([A-Za-z0-9][A-Za-z0-9\s&'.,\-/]{2,35}?)(?:\s*\n|\s*on\s|\s*via|\s*using|\s*upi|\s*ref|\s*transaction|\s*id|\s*was|[.!]|$)/i,
   // At <Merchant> (e.g. Paid at Starbucks)
   /\bat\s+([A-Za-z0-9][A-Za-z0-9\s&'.,\-/]{2,35}?)(?:\s*\n|\s*on\s|\s*[.!]|$)/i,
   // For <Merchant>
@@ -162,19 +166,26 @@ export function parseTransactionText(text) {
   normalized = normalized.replace(/(?:^|\n)\s*[\?:=Ff]\s*([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]{1,2})?|[0-9]+(?:\.[0-9]{1,2})?)/g, '\n₹$1');
 
   // OCR engines (especially ML Kit) often recognize the Indian Rupee symbol '₹' as a '7':
-  // Case A: Isolated '7' on its own line followed immediately by an amount line (e.g. "7\n80" -> "₹80", "7\n500" -> "₹500")
-  normalized = normalized.replace(/(?:^|\n)\s*7\s*\n\s*([1-9][0-9]{0,2}(?:,[0-9]{3})*(?:\.[0-9]{1,2})?|[1-9][0-9]*(?:\.[0-9]{1,2})?)(?=\s*(?:\n|$))/g, '\n₹$1');
-
-  // Case B: In a payment context (like "PAYMENT SUCCESSFUL\n7 80" or "PAID\n780"), convert isolated 7 before amount:
-  normalized = normalized.replace(/(?:success|successful|paid|amount|total)\s*\n\s*7\s+([1-9][0-9]{0,2}(?:,[0-9]{3})*(?:\.[0-9]{1,2})?|[1-9][0-9]*(?:\.[0-9]{1,2})?)/gi, '₹$1');
-
-  // Case C: Leading 7 attached to number when between payment success/paid and "To <Merchant>" or "Paid to"
-  // e.g., "PAYMENT SUCCESSFUL\n780\nTo Advait..." or "Paid successfully\n7500\nPaid to..." -> ₹80 / ₹500
-  normalized = normalized.replace(/(?:payment successful|paid successfully|slice|successful|paid|debited)\s*\n\s*7([1-9][0-9]{1,5}(?:\.[0-9]{1,2})?)\s*\n\s*(?:(?:paid\s+)?to\b|for\b|from\b)/gi, (match, num) => {
-    return match.replace(`7${num}`, `₹${num}`);
+  // 1) Isolated '7' followed by space and numbers (e.g. "Payment to John\n7 50", "7 500\nPaid to Sharma", "Paid 7 250")
+  normalized = normalized.replace(/(^|[^0-9])7[ \t]+([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]{1,2})?|[0-9]+(?:\.[0-9]{1,2})?)/g, (match, prefix, num) => {
+    return prefix + '₹' + num;
   });
 
-  // Case D: If an isolated '7' is sitting right before "Paid to" or "To <Merchant>" or "Paid from", remove that stray 7 (it was ₹)
+  // 2) Isolated '7' on its own line followed immediately by an amount line (e.g. "7\n80" -> "₹80", "7\n500" -> "₹500")
+  normalized = normalized.replace(/(?:^|\n)\s*7\s*\n\s*([1-9][0-9]{0,2}(?:,[0-9]{3})*(?:\.[0-9]{1,2})?|[1-9][0-9]*(?:\.[0-9]{1,2})?)(?=\s*(?:\n|$))/g, '\n₹$1');
+
+  // 3) Leading 7 attached to number when between payment keywords or before "To / Paid to"
+  // e.g., "7500\nPaid to Sharma", "780\nPaid to Advait", "Paid successfully\n7500\nPaid to"
+  normalized = normalized.replace(/(?:payment successful|paid successfully|slice|successful|paid|debited|^|\n)\s*7([1-9][0-9]{1,5}(?:\.[0-9]{1,2})?)\s*\n\s*(?:(?:paid\s+)?to\b|for\b|from\b)/gi, (match, num) => {
+    return '\n₹' + num + '\n';
+  });
+
+  // 4) Leading 7 attached to number after "Paid to <Merchant>\n7500" or "To <Merchant>\n7250"
+  normalized = normalized.replace(/(?:paid\s+to|to|for|paid|payment)\s*[:\-]?\s*([^\n]+)\n\s*7([1-9][0-9]{1,5}(?:\.[0-9]{1,2})?)(?=\s*(?:\n|$))/gi, (match, mer, num) => {
+    return match.replace(new RegExp('7' + num + '$'), '₹' + num);
+  });
+
+  // 5) If an isolated '7' is sitting right before "Paid to" or "To <Merchant>" or "Paid from", remove that stray 7 (it was ₹)
   normalized = normalized.replace(/(?:^|\n)\s*7\s*\n\s*(?:paid\s+to|to\s+|paid\s+from|from\s+)/gi, '\n');
 
   // 2. Extract Amount
@@ -212,8 +223,8 @@ export function parseTransactionText(text) {
       const prevLine = i > 0 ? lines[i - 1].trim() : '';
       const nextLine = i < lines.length - 1 ? lines[i + 1].trim() : '';
 
-      // If this line itself is just '7', do not treat 7 as the amount
-      // (in Indian payment receipts, ₹ is often misread as a standalone 7)
+      // If this line itself is just '7' without any currency symbol or payment context,
+      // it was an unrecognized Rupee sign, so don't treat it as the amount
       if (trimmed === '7') {
         continue;
       }
@@ -222,7 +233,7 @@ export function parseTransactionText(text) {
       if (lineMatch && lineMatch[1]) {
         let raw = lineMatch[1].replace(/,/g, '');
 
-        if (raw === '7') {
+        if (raw === '7' && !/₹|rs/i.test(trimmed)) {
           continue;
         }
 
@@ -232,6 +243,7 @@ export function parseTransactionText(text) {
           prevLine.toLowerCase().includes('payment') ||
           prevLine.toLowerCase().includes('successful') ||
           prevLine.toLowerCase().includes('paid') ||
+          prevLine.toLowerCase().includes('to') ||
           nextLine.toLowerCase().startsWith('to ') ||
           nextLine.toLowerCase().startsWith('paid to')
         );
@@ -306,7 +318,7 @@ export function parseTransactionText(text) {
 
       if (
         candidate.length > 1 &&
-        !skipWords.some((sw) => lowerCandidate === sw || lowerCandidate.startsWith(sw))
+        !skipWords.some((sw) => lowerCandidate === sw || lowerCandidate.startsWith(sw + ' '))
       ) {
         title = cleanExtractedTitle(candidate);
         break;

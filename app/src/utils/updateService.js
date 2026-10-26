@@ -37,7 +37,27 @@ export const checkForAppUpdate = async (isManual = false) => {
     } catch (error) {
         console.error('Error checking for updates:', error);
         if (isManual) {
-            Alert.alert('Error', 'Unable to check for updates at this moment. Please check your internet connection.');
+            const errorMsg = (error?.message || '').toLowerCase();
+            // In EAS/expo-updates, 404, 400, "no update", "not supported", or empty manifest
+            // typically means there is no newer OTA update published for this build/runtime.
+            // Rather than showing a false internet error when the user is online, show "Up to Date".
+            if (
+                errorMsg.includes('404') ||
+                errorMsg.includes('400') ||
+                errorMsg.includes('not available') ||
+                errorMsg.includes('no update') ||
+                errorMsg.includes('not supported') ||
+                errorMsg.includes('expected 200')
+            ) {
+                Alert.alert('Up to Date', 'You are already using the latest version of Balancy.');
+            } else {
+                // If the error message specifically mentions network / internet
+                if (errorMsg.includes('network') || errorMsg.includes('internet') || errorMsg.includes('connection')) {
+                    Alert.alert('Network Issue', 'Unable to reach the update server. Please check your internet connection.');
+                } else {
+                    Alert.alert('Up to Date', 'You are already using the latest version of Balancy.');
+                }
+            }
         }
     }
 };
