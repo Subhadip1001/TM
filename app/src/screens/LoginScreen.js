@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, Platform, Image } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -7,6 +7,9 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { API_BASE_URL } from '../config';
 import { useTheme } from '../context/ThemeContext';
+
+import { signInWithGoogle } from '../services/GoogleAuthService';
+import { triggerHaptic } from '../utils/haptics';
 
 const API_URL = `${API_BASE_URL}/auth`; 
 
@@ -17,10 +20,11 @@ const LoginScreen = ({ navigation }) => {
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
+    const [isGoogleLoading, setIsGoogleLoading] = useState(false);
     const [errorMessage, setErrorMessage] = useState('');
 
     const handleLogin = async () => {
-        if (isLoading) return;
+        if (isLoading || isGoogleLoading) return;
         setErrorMessage('');
 
         const trimmedEmail = (email || '').trim().toLowerCase();
@@ -57,6 +61,27 @@ const LoginScreen = ({ navigation }) => {
             setErrorMessage(error.response?.data?.error || 'Login failed. Please check your credentials.');
         } finally {
             setIsLoading(false);
+        }
+    };
+
+    const handleGoogleAuth = async () => {
+        if (isLoading || isGoogleLoading) return;
+        setErrorMessage('');
+        setIsGoogleLoading(true);
+        triggerHaptic('selection');
+
+        try {
+            const res = await signInWithGoogle();
+            if (res.success && res.token) {
+                navigation.reset({
+                    index: 0,
+                    routes: [{ name: 'Main' }],
+                });
+            }
+        } catch (error) {
+            setErrorMessage(error.message || 'Google sign-in failed. Please try again.');
+        } finally {
+            setIsGoogleLoading(false);
         }
     };
 
@@ -127,10 +152,11 @@ const LoginScreen = ({ navigation }) => {
                     <Ionicons name={showPassword ? "eye-off" : "eye"} size={24} color={colors.textSecondary} />
                 </TouchableOpacity>
             </View>
+
             <TouchableOpacity 
-                style={[styles.button, { backgroundColor: colors.primary }, isLoading && styles.buttonDisabled]} 
+                style={[styles.button, { backgroundColor: colors.primary }, (isLoading || isGoogleLoading) && styles.buttonDisabled]} 
                 onPress={handleLogin}
-                disabled={isLoading}
+                disabled={isLoading || isGoogleLoading}
                 activeOpacity={0.85}
             >
                 {isLoading ? (
@@ -145,7 +171,46 @@ const LoginScreen = ({ navigation }) => {
                     </View>
                 )}
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => navigation.navigate('Signup')} disabled={isLoading}>
+
+            {/* Divider */}
+            <View style={styles.dividerRow}>
+                <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
+                <Text style={[styles.dividerText, { color: colors.textMuted }]}>or continue with</Text>
+                <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
+            </View>
+
+            {/* Google Sign-In Button */}
+            <TouchableOpacity 
+                style={[
+                    styles.googleButton, 
+                    { 
+                        backgroundColor: colors.card, 
+                        borderColor: isDark ? colors.border : '#E2E8F0' 
+                    },
+                    (isLoading || isGoogleLoading) && styles.buttonDisabled
+                ]} 
+                onPress={handleGoogleAuth}
+                disabled={isLoading || isGoogleLoading}
+                activeOpacity={0.85}
+            >
+                {isGoogleLoading ? (
+                    <View style={styles.loadingRow}>
+                        <ActivityIndicator size="small" color={colors.primary} />
+                        <Text style={[styles.googleButtonText, { color: colors.text }]}>Connecting Google...</Text>
+                    </View>
+                ) : (
+                    <View style={styles.googleBtnRow}>
+                        <Image 
+                            source={require('../../assets/google-logo.png')} 
+                            style={styles.googleIcon} 
+                            resizeMode="contain" 
+                        />
+                        <Text style={[styles.googleButtonText, { color: colors.text }]}>Sign in with Google</Text>
+                    </View>
+                )}
+            </TouchableOpacity>
+
+            <TouchableOpacity onPress={() => navigation.navigate('Signup')} disabled={isLoading || isGoogleLoading}>
                 <Text style={[styles.linkText, { color: colors.primary }]}>Don't have an account? Sign up</Text>
             </TouchableOpacity>
             </View>
@@ -182,7 +247,19 @@ const styles = StyleSheet.create({
     loadingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
     loadingText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700', letterSpacing: 0.3 },
     buttonText: { color: '#FFFFFF', fontSize: 18, fontWeight: '800', letterSpacing: 0.5 },
-    linkText: { color: '#4F46E5', marginTop: 30, textAlign: 'center', fontSize: 16, fontWeight: '700' }
+    linkText: { color: '#4F46E5', marginTop: 30, textAlign: 'center', fontSize: 16, fontWeight: '700' },
+    dividerRow: { flexDirection: 'row', alignItems: 'center', marginVertical: 20 },
+    dividerLine: { flex: 1, height: 1 },
+    dividerText: { marginHorizontal: 10, fontSize: 13, fontWeight: '600' },
+    googleButton: {
+        height: 60, borderRadius: 16, borderWidth: 1,
+        justifyContent: 'center', alignItems: 'center', marginBottom: 5,
+        shadowColor: '#94A3B8', shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.05, shadowRadius: 10, elevation: 2
+    },
+    googleBtnRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
+    googleIcon: { width: 22, height: 22, marginRight: 12 },
+    googleButtonText: { fontSize: 16, fontWeight: '700' }
 });
 
 export default LoginScreen;

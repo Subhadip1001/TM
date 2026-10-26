@@ -52,7 +52,10 @@
             "NSExtensionActivationSupportsMovieWithMaxCount": 0,
             "NSExtensionActivationSupportsText": true
           },
-          "androidIntentFilters": ["text/*", "image/*"],
+          "androidIntentFilters": [
+            "text/*",
+            "image/*"
+          ],
           "androidMainActivityAttributes": {
             "android:launchMode": "singleTask"
           }
@@ -66,7 +69,8 @@
           "imageWidth": 200
         }
       ],
-      "expo-sharing"
+      "expo-sharing",
+      "expo-web-browser"
     ],
     "experiments": {
       "reactCompiler": true
