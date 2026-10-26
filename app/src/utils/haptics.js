@@ -9,22 +9,20 @@ let lastHapticTime = 0;
  */
 export const triggerHaptic = (style = 'selection') => {
     const now = Date.now();
-    // Prevent overlapping rapid vibrations
+    // Debounce to prevent rapid overlapping buzzes
     if (now - lastHapticTime < 80) return;
     lastHapticTime = now;
 
     try {
         if (style === 'selection' || style === 'light') {
-            if (Platform.OS === 'android') {
-                // On Android, impactAsync(Light) provides a short, gentle tick
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-            } else {
+            // 'Soft' impact is the lowest-intensity, most cushioned haptic profile available
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Soft).catch(() => {
                 Haptics.selectionAsync().catch(() => {});
-            }
+            });
         } else if (style === 'medium') {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Soft).catch(() => {});
         } else if (style === 'success') {
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
         }
     } catch (e) {
         // Safe fallback if device doesn't support haptics
